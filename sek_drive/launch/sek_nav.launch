@@ -1,0 +1,19 @@
+<launch>
+  <master auto="start"/>
+
+  <!-- Run the map server -->
+  <!-- <node name="map_server" pkg="map_server" type="map_server" args="/home/skel/test.yaml"/>  -->
+	<node name="map_server" pkg="map_server" type="map_server" args="/home/skel/test.yaml" output="screen"/>
+
+  <!--- Run AMCL -->
+<!--<include file="/home/skel/navigation-hydro-devel/amcl/examples/amcl_diff.launch"/>
+ <include file="$(find amcl)/examples/amcl_diff.launch" /> -->
+<include file ="/opt/ros/fuerte/stacks/navigation/amcl/examples/amcl_diff.launch"/> 
+  <node pkg="sek_drive" type="drive_base" respawn="true" name="sek_drive" output="screen">
+    <rosparam file="$(find sek_drive)/launch/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find sek_drive)/launch/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find sek_drive)/launch/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find sek_drive)/launch/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find sek_drive)/launch/base_local_planner_params.yaml" command="load" />
+  </node>
+</launch>
