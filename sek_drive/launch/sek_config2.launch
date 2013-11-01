@@ -10,7 +10,7 @@
     <node pkg="joy" type="joy_node" name="joy_node" output="screen"/>
 	<!-- <node pkg="tf" type="static_transform_publisher" name="odom" args="0.0 0.0 0.0 0.0 0.0 0.0 /odom /base_link 100"/> 
 	<node pkg="tf" type="static_transform_publisher" name="world" args="0.0 0.0 0.0 0.0 0.0 0.0 /world /base_link 100"/> -->
-    <node name="map_server" pkg="map_server" type="map_server" args="/home/skel/test.yaml" output="screen"/> 
+    <node name="map_server" pkg="map_server" type="map_server" args="/home/skel/grafeio.yaml" output="screen"/> 
 
 <!--
 	<node name="laser_scanner" pkg="urg_node" type="urg_node" respawn="true" output="screen">
@@ -26,7 +26,7 @@
 	<node pkg="laser_scan_matcher" type="laser_scan_matcher_node" name="laser_scan_matcher_node" output="screen">
 		<!-- <param name="fixed_frame" value = "odom"/> -->
 		<param name="base_frame" value = "/base_link"/>
-        <param name="fixed_frame" value = "map"/>
+        <param name="fixed_frame" value = "odom"/>
 		<param name="use_cloud_input" value="false"/>
 		<param name="publish_tf" value="true"/>
 		<param name="publish_odom" value="true"/>

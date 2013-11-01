@@ -33,6 +33,7 @@ double circumference = PI* DIAMETER; //0.47877872040708448954
 double max_lin_vel = circumference*(MAX_SPEED/60); //2.87267232244250693724
 double max_ang_vle = max_lin_vel/(WHEEL_BASE_WIDTH/2);//0.14363361612212534686
 
+int gyro_speed = 0;
 int LM = 0 ;
 int RM = 0 ;
 int HB = 0 ; //handbrake signal
@@ -85,7 +86,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {	
 	//current_time = ros::Time::now();
 	int lenc,renc;
-	if((msg->axes[5]!=0)||(msg->axes[6]!=0))
+	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
 		//device.SetConfig(_RWD, 1, -1);
 		//device.SetConfig(_RWD, 2, -1);
@@ -94,38 +95,63 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		{
 			RM = -MAX_SPEED;
 			LM = MAX_SPEED;
+            gyro_speed = LM ;
 		}
 		else if(msg->axes[6]==-1)
 		{
 			RM = MAX_SPEED;
 			LM = -MAX_SPEED;
+            gyro_speed = LM ;
 		}
 		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
 		{
 			RM = -MAX_SPEED*msg->axes[5];
 			LM = -MAX_SPEED*msg->axes[5];
 		}
-		else if ((msg->axes[1]!=0)||(msg->axes[3]!=0))
-		{
-			if(msg->axes[1]==1)
-		{
-			RM = -MAX_SPEED;
-			LM = MAX_SPEED;
-		}
-		else if(msg->axes[1]==-1)
-		{
-			RM = MAX_SPEED;
-			LM = -MAX_SPEED;
-		}
-		else if(msg->axes[3]!=0)
-		{
-			RM = -MAX_SPEED*msg->axes[5];
-			LM = -MAX_SPEED*msg->axes[5];
-		}
-		}
-		device.SetCommand(_GO,1, RM);// RIGHT
-		device.SetCommand(_GO,2, LM);//LEFT
-	}
+		else if(msg->axes[1]!=0)
+        {
+            LM = msg->axes[1]*MAX_SPEED;
+            RM = -msg->axes[1]*MAX_SPEED;
+            speed = LM;
+            if ((msg->axes[0]!=0)||(msg->axes[4]!=0))
+            {
+                if(speed==0)
+                {
+                    speed = 200;
+                }
+                if (msg->axes[0]>0)
+                {
+                    LM = - gyro_speed;
+                    RM = - gyro_speed;
+                }
+                 else
+                {
+                    LM = gyro_speed;
+                    RM = gyro_speed;
+                }
+            }
+        }
+        else if ((msg->axes[0]!=0)||(msg->axes[4]!=0))
+        {
+            if(speed==0)
+            {
+                gyro_speed = 200;
+            }
+            if (msg->axes[0]>0)
+            {
+                LM = - gyro_speed;
+                RM = - gyro_speed;
+            }
+            else
+            {
+                LM = gyro_speed;
+                RM = gyro_speed;
+            }
+        }
+        device.SetCommand(_GO,1, RM);// RIGHT
+        device.SetCommand(_GO,2, LM);//LEFT
+    }
+	
 	else 
 	{
 		device.SetCommand(_GO,1, 0);// RIGHT
