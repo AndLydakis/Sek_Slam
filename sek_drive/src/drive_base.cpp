@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-
+#include <cmath> 
 
 using namespace std;
 
@@ -88,20 +88,18 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 	int lenc,renc;
 	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
-		//device.SetConfig(_RWD, 1, -1);
-		//device.SetConfig(_RWD, 2, -1);
 		//ROS_INFO("HEAR HEAR");
 		if(msg->axes[6]==1)//MPROS-PISW
 		{
 			RM = -MAX_SPEED;
 			LM = MAX_SPEED;
-            gyro_speed = LM ;
+            //gyro_speed = LM ;
 		}
 		else if(msg->axes[6]==-1)
 		{
 			RM = MAX_SPEED;
 			LM = -MAX_SPEED;
-            gyro_speed = LM ;
+            //gyro_speed = LM ;
 		}
 		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
 		{
@@ -110,42 +108,47 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		}
 		else if(msg->axes[1]!=0)
         {
-            LM = msg->axes[1]*MAX_SPEED;
-            RM = -msg->axes[1]*MAX_SPEED;
-            speed = LM;
-            if ((msg->axes[0]!=0)||(msg->axes[4]!=0))
+            if ((msg->axes[1]!=0)||(msg->axes[3]!=0))
             {
-                if(speed==0)
+                if (msg->axes[1] > 0)//efteia
                 {
-                    speed = 200;
+                    LM = msg->axes[1]*MAX_SPEED;
+                    RM = -msg->axes[1]*MAX_SPEED;
+                    if (msg->axes[3] > 0)//aristera
+                    {
+                        LM = LM - LM * abs(msg->axes[3])
+                    }
+                    else if (msg->axes[3]<0)//de3ia
+                    {
+                        RM = RM + RM * abs(msg->axes[3])
+                    }
                 }
-                if (msg->axes[0]>0)
+                else if (msg->axes[1] < 0)
                 {
-                    LM = - gyro_speed;
-                    RM = - gyro_speed;
+                    LM = - msg->axes[1]*MAX_SPEED;
+                    RM = msg->axes[1]*MAX_SPEED;
+                    if (msg->axes[3] > 0)//aristera
+                    {
+                        LM = LM - LM * abs(msg->axes[3])
+                    }
+                    else if (msg->axes[3]<0)//de3ia
+                    {
+                        RM = RM + RM * abs(msg->axes[3])
+                    }
                 }
-                 else
+                else//akinhto oxhma
                 {
-                    LM = gyro_speed;
-                    RM = gyro_speed;
+                    if (msg->axes[3] > 0)//aristera
+                    {
+                        LM = (MAX_SPEED/2)*(1-msg->axes[3]);
+                        RM = - (MAX_SPEED/2)*(msg->axes[3]);
+                    }
+                    else if (msg->axes[3] < 0)//de3ia
+                    {
+                        LM = (MAX_SPEED/2)*(abs(msg->axes[3]));
+                        RM = -(MAX_SPEED/2)*(abs(1-msg->axes[3]));
+                    }
                 }
-            }
-        }
-        else if ((msg->axes[0]!=0)||(msg->axes[4]!=0))
-        {
-            if(speed==0)
-            {
-                gyro_speed = 200;
-            }
-            if (msg->axes[0]>0)
-            {
-                LM = - gyro_speed;
-                RM = - gyro_speed;
-            }
-            else
-            {
-                LM = gyro_speed;
-                RM = gyro_speed;
             }
         }
         device.SetCommand(_GO,1, RM);// RIGHT
