@@ -35,7 +35,7 @@ class handler(object):
                 x.sensor_controller()
                 del x
             elif(state==0):
-                return False
+                return state
             #elif
                 #######
                 #######

@@ -32,7 +32,7 @@ using namespace std;
 double circumference = PI* DIAMETER; //0.47877872040708448954
 double max_lin_vel = circumference*(MAX_SPEED/60); //2.87267232244250693724
 double max_ang_vle = max_lin_vel/(WHEEL_BASE_WIDTH/2);//0.14363361612212534686
-
+int six = 0;
 int gyro_speed = 0;
 int LM = 0 ;
 int RM = 0 ;
@@ -54,6 +54,9 @@ int rotRtot = 0;
 int rotLtot = 0;
 int speed ;	
 int count_ = 0;
+int lenc = 0;
+int renc = 0;
+
 double posx = 0.0;
 double posx_prev = 0.0;
 double posy = 0.0;
@@ -72,7 +75,7 @@ int distR = 0;
 int distL = 0;
 int total_dist = 0;
 int battery = 0;
-double seconds = 0.0;;
+double seconds = 0.0;
 double deg = 0 ;
 int dist = 0;
 ros::Time current_time, last_time, total_time;
@@ -84,8 +87,7 @@ FILE *output;
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {	
-	//current_time = ros::Time::now();
-	int lenc,renc;
+    current_time=ros::Time::now();
 	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
 		//ROS_INFO("HEAR HEAR");
@@ -100,68 +102,155 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			RM = MAX_SPEED;
 			LM = -MAX_SPEED;
             //gyro_speed = LM ;
+            system("mplayer /home/skel/beep.mp4&");
+            
 		}
 		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
 		{
 			RM = -MAX_SPEED*msg->axes[5];
 			LM = -MAX_SPEED*msg->axes[5];
 		}
-		else if(msg->axes[1]!=0)
+		else if((msg->axes[0]!=0)||(msg->axes[1]!=0))
         {
-            if ((msg->axes[1]!=0)||(msg->axes[3]!=0))
-            {
-                if (msg->axes[1] > 0)//efteia
+            if ((msg->axes[0]!=0)||(msg->axes[1]!=0))
+            {   
+                if (msg->axes[1] > 0)//eftheia
                 {
                     LM = msg->axes[1]*MAX_SPEED;
                     RM = -msg->axes[1]*MAX_SPEED;
-                    if (msg->axes[3] > 0)//aristera
+                    if (msg->axes[0] > 0)//aristera
                     {
-                        LM = LM - LM * abs(msg->axes[3])
+                        if (msg->axes[1]==1)
+                        {
+                            LM = MAX_SPEED - MAX_SPEED*0.2;
+                            RM = -MAX_SPEED ;
+                        }
+                        else
+                        {
+                            LM = LM - LM * fabs(msg->axes[0]);
+                        }
                     }
-                    else if (msg->axes[3]<0)//de3ia
-                    {
-                        RM = RM + RM * abs(msg->axes[3])
+                    else if (msg->axes[0]<0)//de3ia
+                    {   
+                        if (msg->axes[1]==1)
+                        {
+                            LM = MAX_SPEED;
+                            RM = -MAX_SPEED + MAX_SPEED*0.2;
+                        }
+                        else
+                        {
+                            RM = RM - RM * fabs(msg->axes[0]);
+                        }
                     }
                 }
-                else if (msg->axes[1] < 0)
+                else if (msg->axes[1] < 0)//pisw
                 {
-                    LM = - msg->axes[1]*MAX_SPEED;
-                    RM = msg->axes[1]*MAX_SPEED;
-                    if (msg->axes[3] > 0)//aristera
+                    LM =  msg->axes[1]*MAX_SPEED;
+                    RM = -msg->axes[1]*MAX_SPEED;
+                    if (msg->axes[0] > 0)//aristera
                     {
-                        LM = LM - LM * abs(msg->axes[3])
+                        if(msg->axes[1]==-1)
+                        {
+                            LM =  msg->axes[1]*MAX_SPEED;
+                            RM = -msg->axes[1]*MAX_SPEED - MAX_SPEED*0.2; 
+                        }
+                        else
+                        {
+                            LM = LM - LM * fabs(msg->axes[0]);
+                        }
                     }
-                    else if (msg->axes[3]<0)//de3ia
-                    {
-                        RM = RM + RM * abs(msg->axes[3])
+                    else if (msg->axes[0]<0)//de3ia
+                    {   
+                        if(msg->axes[1]==-1)
+                        {
+                            LM =  msg->axes[1]*MAX_SPEED - MAX_SPEED*0.2;
+                            RM = -msg->axes[1]*MAX_SPEED ; 
+                        }
+                        else
+                        {
+                            RM = RM - RM * fabs(msg->axes[0]);
+                        }
                     }
                 }
                 else//akinhto oxhma
-                {
-                    if (msg->axes[3] > 0)//aristera
-                    {
-                        LM = (MAX_SPEED/2)*(1-msg->axes[3]);
-                        RM = - (MAX_SPEED/2)*(msg->axes[3]);
+                {   
+                    //cout<<"AKINHTO"<<endl;
+                    if (msg->axes[0] > 0)//aristera
+                    {   
+                        LM = -MAX_SPEED;
+                        RM = -MAX_SPEED;
+                        /*
+                        if(msg->axes[0]==0.5)
+                        {
+                            LM = -MAX_SPEED/2;
+                            RM = -MAX_SPEED/2;
+                        }
+                        else if(msg->axes[0] < 0.5)
+                        {   
+                            //cout<<"IF 1"<<endl;
+                            LM = (MAX_SPEED)*(msg->axes[0]);
+                            RM = -(MAX_SPEED)*(1-msg->axes[0]);
+                        }
+                        else
+                        {
+                            //cout<<"ELSE 1"<<endl;
+                            LM = (MAX_SPEED)*(1-fabs(msg->axes[0]));
+                            RM = -(MAX_SPEED)*(fabs(msg->axes[0]));
+                        }
+                        */
                     }
-                    else if (msg->axes[3] < 0)//de3ia
+                    else if (msg->axes[0] < 0)//de3ia
                     {
-                        LM = (MAX_SPEED/2)*(abs(msg->axes[3]));
-                        RM = -(MAX_SPEED/2)*(abs(1-msg->axes[3]));
-                    }
+                        LM = MAX_SPEED;
+                        RM = MAX_SPEED;
+                        /*
+                        if(msg->axes[0]==-0.5)
+                        {
+                            LM = MAX_SPEED/2;
+                            RM = MAX_SPEED/2;
+                        }
+                        else if (msg->axes[0] > - 0.5)
+                        {   
+                            //cout<<"IF2"<<endl;
+                            LM = (MAX_SPEED)*(1-fabs(msg->axes[0]));
+                            RM = -(MAX_SPEED)*(fabs(msg->axes[0]));
+                            
+                        }
+                        else
+                        {
+                            //cout<<"ELSE2"<<endl;
+                            LM = (MAX_SPEED)*(fabs(msg->axes[0]));
+                            RM = -(MAX_SPEED)*(1-fabs(msg->axes[0]));
+                        }
+                        */
+                    }                    
                 }
             }
         }
+        
         device.SetCommand(_GO,1, RM);// RIGHT
         device.SetCommand(_GO,2, LM);//LEFT
+        cout<<"ARISTERO MOTORI :"<< LM<<endl;
+        cout<<"DEKSIO MOTORI :"<<RM<<endl;
+        //calcOdom();
+        if(msg->buttons[0]==1)
+		{	
+            system("mplayer /home/skel/horn.mp3 &");
+            ros::Duration(2).sleep();
+            system("killall -9 mplayer");
+		}
     }
 	
 	else 
 	{
+        system("killall -9 mplayer");
 		device.SetCommand(_GO,1, 0);// RIGHT
 		device.SetCommand(_GO,2, 0);//LEFT
 		if(msg->buttons[0]==1)
 		{	
-
+            system("mplayer /home/skel/horn.mp3 &");
+            ros::Duration(2).sleep();
+            system("killall -9 mplayer");
 		}
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
 		{	
@@ -201,56 +290,11 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			ros::shutdown();
 		}
 	}
-	/*
-	if((device.GetValue(_S, 1, lenc)!=RQ_SUCCESS)||(device.GetValue(_S, 2, renc)!=RQ_SUCCESS))
-		{
-			ROS_INFO("Encoder data decoding failed\n");
-		}  
-		//if(device.GetValue(_S, 2, renc)!=RQ_SUCCESS)
-		//	{
-		//		ROS_INFO("Encoder data decoding failed\n");
-		//	}
-		else
-		{	
-			ROS_INFO("left_%d Right_%d",lenc,-renc);
-			//ros::Duration(0.5).sleep();
-			seconds= (current_time - last_time).toSec();
-			mr = seconds*(-renc/60.0)*(DIAMETER*PI);
-			ml = seconds*(lenc/60.0)*(DIAMETER*PI);
-			//mr = -renc*(DIAMETER*PI);
-			//ml = lenc*(DIAMETER*PI);
-			dist=(ml+mr)/2.0;
-			total_dist +=abs(dist);
-			mth_prev = mth;
-			mth += (ml-mr)/WHEEL_BASE_WIDTH;
-			vth = (mth - mth_prev)/seconds;
-			deg -=(float)((int)(mth/TWOPI))*TWOPI;
-			posx_prev=posx;
-			posy_prev=posy;
-			ROS_INFO("COS %f",cos(mth*RADS));
-			ROS_INFO("SIN %f",sin(mth*RADS));
-			posx += (dist*(cos(mth*RADS)));
-			posy += (dist*(sin(mth*RADS)));
-			vx = (posx - posx_prev) / seconds;
-			vy = (posy - posy_prev) / seconds;
-			ROS_INFO("MR : %f",mr);
-			ROS_INFO("ML : %f",ml);
-			ROS_INFO("POSX : %f",posx);
-			ROS_INFO("POSY : %f",posy);
-			ROS_INFO("mth : %f",mth);
-			ROS_INFO("VX : %f",vx);
-			ROS_INFO("VY : %f",vy);
-			ROS_INFO("VTH : %f",vth);
-			mr=0;
-			ml=0;
-			dist=0;
-			//last_time = current_time;
-		}
-		if(device.GetValue(_V,battery)!=RQ_SUCCESS)
-		{
-			ROS_INFO("Failed to read battery voltage\n");
-		}
-		*/
+   
+
+    //cout<<"RENC : "<<renc<<endl;
+    //cout<<"LENC : "<<lenc<<endl;
+
 	
 }
 
@@ -294,6 +338,57 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
 	}
 }
 
+void calcOdom()
+{   
+     if((device.GetValue(_S, 1, lenc)!=RQ_SUCCESS)||(device.GetValue(_S, 2, renc)!=RQ_SUCCESS))
+		{
+			ROS_INFO("Encoder data decoding failed\n");
+            return;
+		}  
+	if(device.GetValue(_S, 2, renc)!=RQ_SUCCESS)
+		{
+            ROS_INFO("Encoder data decoding failed\n");
+            return;
+		}
+    ROS_INFO("ODOM LENC : %d",lenc);
+    ROS_INFO("ODOM RENC : %d",lenc);
+}
+
+void calcOdom_()
+{
+    ROS_INFO("left_%d Right_%d",lenc,-renc);
+    //ros::Duration(0.5).sleep();
+    seconds= (current_time - last_time).toSec();
+    mr = seconds*(-renc/60.0)*(DIAMETER*PI);
+    ml = seconds*(lenc/60.0)*(DIAMETER*PI);
+    //mr = -renc*(DIAMETER*PI);
+    //ml = lenc*(DIAMETER*PI);
+    dist=(ml+mr)/2.0;
+    total_dist +=fabs(dist);
+    mth_prev = mth;
+    mth += (ml-mr)/WHEEL_BASE_WIDTH;
+    vth = (mth - mth_prev)/seconds;
+    deg -=(float)((int)(mth/TWOPI))*TWOPI;
+    posx_prev=posx;
+    posy_prev=posy;
+    //ROS_INFO("COS %f",cos(mth*RADS));
+    //ROS_INFO("SIN %f",sin(mth*RADS));
+    posx += (dist*(cos(mth*RADS)));
+    posy += (dist*(sin(mth*RADS)));
+    vx = (posx - posx_prev) / seconds;
+    vy = (posy - posy_prev) / seconds;
+    //ROS_INFO("MR : %f",mr);
+    //ROS_INFO("ML : %f",ml);
+    //ROS_INFO("POSX : %f",posx);
+    //ROS_INFO("POSY : %f",posy);
+    //ROS_INFO("mth : %f",mth);
+    //ROS_INFO("VX : %f",vx);
+    //ROS_INFO("VY : %f",vy);
+    //ROS_INFO("VTH : %f",vth);
+    mr=0;
+    ml=0;
+    dist=0;
+}
 
 int main(int argc, char *argv[])
 {	
@@ -334,37 +429,25 @@ int main(int argc, char *argv[])
     printf ("Sek Operational\n\n");
     ros::Duration(0.01).sleep(); //sleep for 10 ms
 
-	current_time = ros::Time::now();
+	//current_time = ros::Time::now();
 	last_time = ros::Time::now();
 while (ros::ok())
     {	
-		//current_time = ros::Time::now();
 		ros::spinOnce();
         /*
-        if((current_time.toSec() - last_time.toSec())>0.5)
+        current_time = ros::Time::now();
+        seconds = current_time.toSec() - last_time.toSec();
+        //ROS_INFO("SECONDS : %f",seconds);
+        if(seconds > 0.2)
         {
-            ROS_INFO("HERE");
-            p_status = system("ping -c 1 192.168.2.86");
-            if (-1 != p_status)
-            {
-                ping_ret = WEXITSTATUS(p_status);
-                if (ping_ret !=0)
-                {
-                    device.SetCommand(_GO,1, 0);// RIGHT
-                    device.SetCommand(_GO,2, 0);//LEFT
-                    device.Disconnect();
-                    file.open ("/home/skel/ip_status.txt", ios::out | ios::binary);
-                    file<<"DISCONNECTED"<<endl;
-                    file.close();
-                    ros::shutdown();
-                    return 1;
-                }
-            }
-            ROS_INFO("P_RET : %d" , ping_ret);
-            last_time=ros::Time::now();
+            //ROS_INFO("IN LOOP");
+            //ros::Duration(3).sleep();
+            calcOdom();
+            last_time = ros::Time::now();
+            current_time = ros::Time::now();
+
         }
-        current_time=ros::Time::now();
-		*/
+        */
      }   
 	device.Disconnect();
 	return 0;

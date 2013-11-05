@@ -21,14 +21,13 @@ except socket.error:
 
 s.listen(1)                 # Now wait for client connection.
 print("listening..")
-close=1
 try:
-	while close:
+	while True:
 		c, addr = s.accept()     # Establish connection with client.
 		
 		#call handler to handle clients requests
 		x=handler(c)
-		close=x.handle()
+		x.handle()
 finally:
 	s.close()# Close the connection
 
