@@ -102,7 +102,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			RM = MAX_SPEED;
 			LM = -MAX_SPEED;
             //gyro_speed = LM ;
-            system("mplayer /home/skel/beep.mp4&");
+            system("mplayer -really-quiet /home/skel/beep2.mp3&");
             
 		}
 		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
@@ -177,8 +177,8 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                     //cout<<"AKINHTO"<<endl;
                     if (msg->axes[0] > 0)//aristera
                     {   
-                        LM = -MAX_SPEED;
-                        RM = -MAX_SPEED;
+                        LM = -MAX_SPEED*msg->axes[0];
+                        RM = -MAX_SPEED*msg->axes[0];
                         /*
                         if(msg->axes[0]==0.5)
                         {
@@ -201,8 +201,8 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                     }
                     else if (msg->axes[0] < 0)//de3ia
                     {
-                        LM = MAX_SPEED;
-                        RM = MAX_SPEED;
+                        LM = -MAX_SPEED*msg->axes[0];
+                        RM = -MAX_SPEED*msg->axes[0];
                         /*
                         if(msg->axes[0]==-0.5)
                         {
@@ -235,7 +235,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         //calcOdom();
         if(msg->buttons[0]==1)
 		{	
-            system("mplayer /home/skel/horn.mp3 &");
+            system("mplayer -really quiet/home/skel/horn.mp3 &");
             ros::Duration(2).sleep();
             system("killall -9 mplayer");
 		}
@@ -248,9 +248,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		device.SetCommand(_GO,2, 0);//LEFT
 		if(msg->buttons[0]==1)
 		{	
-            system("mplayer /home/skel/horn.mp3 &");
-            ros::Duration(2).sleep();
-            system("killall -9 mplayer");
+        
 		}
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
 		{	
