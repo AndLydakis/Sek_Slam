@@ -3,7 +3,7 @@
 
 
   <!-- Run the map server -->
-  <!-- <node name="map_server" pkg="map_server" type="map_server" args="/home/skel/test.yaml"/>  -->
+    <!--<node name="map_server" pkg="map_server" type="map_server" args="/home/skel/test.yaml"/> -->
 	 <!--<node name="map_server" pkg="map_server" type="map_server" args="/home/skel/grafeio2.pgm 0.025" output="screen" required="true"/> -->
 
   <!--- Run AMCL -->
