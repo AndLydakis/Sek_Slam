@@ -28,12 +28,11 @@ using namespace std;
 #define RADS 57.2958
 #define MAX_SPEED 800 //command
 #define MAX_RPM 360	//RPM
-#define MAX_LIN_VEL  4
+#define MAX_LIN_VEL  2
+#define MIN_LIN_VEL -2
 #define MAX_ROT_VEL  4
+#define MIN_ROT_VEL -4
 
-double vlx = 2/(MAX_LIN_VEL - (-MAX_LIN_VEL)); //PARAGONTAS GIA SCALING TWN CMD_VEL ENTOLWN APO TO DIASTHMA
-                                            //[-4,4] --> [-1,1]
-double vrz = 2/(MAX_ROT_VEL - (-MAX_ROT_VEL));
 /*                                            
 double circumference = PI* DIAMETER; //0.47877872040708448954
 double max_lin_vel = circumference*(MAX_SPEED/60); //2.87267232244250693724
@@ -52,15 +51,7 @@ string response = "";
 RoboteqDevice device;
 int i ;	
 int ping_ret,p_status;
-/*
-clock_t t;
-int posleft;
-int posright;
-int rotR = 0;
-int rotL = 0;
-int rotRtot = 0;
-int rotLtot = 0;
-*/
+
 int speed ;	
 int count_ = 0;
 int lenc = 0;
@@ -71,26 +62,12 @@ double posx_prev = 0.0;
 double posy = 0.0;
 double posy_prev = 0.0;
 double posth = 0.0;
-/*
-double mr = 0.0;
-double ml = 0.0;
-double mth = 0.0;
-double mth_prev = 0.0;
-double turn_deg = 0.0;
-double vx = 0.0;
-double vy = 0.0;
-double vth = 0.0;
-int distR = 0;
-int distL = 0;
-int total_dist = 0;
-*/
+double linx = 0.0;
+double angz = 0.0;
+double linx_prev = 0.0;
+double angz_prev = 0.0;
 int battery = 0;
-/*
-double seconds = 0.0;
-double deg = 0 ;
-int dist = 0;
-ros::Time write_time, cur_write_time, total_time, cur2;
-*/
+
 ros::Time current_time, last_time, total_time;
 
 ofstream file;
@@ -101,6 +78,7 @@ FILE *output;
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {	
     //current_time=ros::Time::now();
+    
 	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
 		//ROS_INFO("HEAR HEAR");
@@ -125,122 +103,239 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		}
 		else if((msg->axes[0]!=0)||(msg->axes[1]!=0))
         {
-            if ((msg->axes[0]!=0)||(msg->axes[1]!=0))
-            {   
-                if (msg->axes[1] > 0)//eftheia
+            if(msg->axes[1]==0)//akinito oxhma
+            {
+                if(msg->axes[0]!=0)//epitopia peristrofi
                 {
-                    LM = msg->axes[1]*MAX_SPEED;
-                    RM = -msg->axes[1]*MAX_SPEED;
-                    if (msg->axes[0] > 0)//aristera
-                    {
-                        if (msg->axes[1]==1)
-                        {
-                            LM = MAX_SPEED - MAX_SPEED*0.2;
-                            RM = -MAX_SPEED ;
-                        }
-                        else
-                        {
-                            LM = LM - LM * fabs(msg->axes[0]);
-                        }
-                    }
-                    else if (msg->axes[0]<0)//de3ia
-                    {   
-                        if (msg->axes[1]==1)
-                        {
-                            LM = MAX_SPEED;
-                            RM = -MAX_SPEED + MAX_SPEED*0.2;
-                        }
-                        else
-                        {
-                            RM = RM - RM * fabs(msg->axes[0]);
-                        }
-                    }
+                    RM = -MAX_SPEED*msg->axes[0];
+                    LM = -MAX_SPEED*msg->axes[0];
                 }
-                else if (msg->axes[1] < 0)//pisw
-                {
-                    LM =  msg->axes[1]*MAX_SPEED;
-                    RM = -msg->axes[1]*MAX_SPEED;
-                    if (msg->axes[0] > 0)//aristera
-                    {
-                        if(msg->axes[1]==-1)
-                        {
-                            LM =  msg->axes[1]*MAX_SPEED;
-                            RM = -msg->axes[1]*MAX_SPEED - MAX_SPEED*0.2; 
-                        }
-                        else
-                        {
-                            LM = LM - LM * fabs(msg->axes[0]);
-                        }
-                    }
-                    else if (msg->axes[0]<0)//de3ia
-                    {   
-                        if(msg->axes[1]==-1)
-                        {
-                            LM =  msg->axes[1]*MAX_SPEED - MAX_SPEED*0.2;
-                            RM = -msg->axes[1]*MAX_SPEED ; 
-                        }
-                        else
-                        {
-                            RM = RM - RM * fabs(msg->axes[0]);
-                        }
-                    }
-                }
-                else//akinhto oxhma
+            }
+            else
+            {
+                RM = -MAX_SPEED*msg->axes[1];
+                LM = MAX_SPEED*msg->axes[1];
+                if(msg->axes[1]>0)//kinisi mprosta
                 {   
-                    //cout<<"AKINHTO"<<endl;
-                    if (msg->axes[0] > 0)//aristera
-                    {   
-                        LM = -MAX_SPEED*msg->axes[0];
-                        RM = -MAX_SPEED*msg->axes[0];
-                        /*
-                        if(msg->axes[0]==0.5)
+                    if(msg->axes[0]>0)//strofi aristera
+                    {
+                        RM = RM + RM*msg->axes[0];
+                        if (RM<(-MAX_SPEED))
                         {
-                            LM = -MAX_SPEED/2;
-                            RM = -MAX_SPEED/2;
+                            RM=-MAX_SPEED;
                         }
-                        else if(msg->axes[0] < 0.5)
-                        {   
-                            //cout<<"IF 1"<<endl;
-                            LM = (MAX_SPEED)*(msg->axes[0]);
-                            RM = -(MAX_SPEED)*(1-msg->axes[0]);
+                        LM = LM - LM*msg->axes[0];
+                        if (LM<(0.2*(MAX_SPEED)))
+                        {
+                            LM=0.2*(MAX_SPEED);
+                        }
+                        /*
+                        if ((abs(LM)-abs(RM))<50)
+                        {
+                            LM = LM-50 ;
+                        }
+                        
+                        //ROS_INFO("STROFI MPROSTA ARISTERA");
+                        if(msg->axes[0]>0.8)//apotomi strofi
+                        {
+                            //ROS_INFO("APOTOMA");
+                           
+                            RM = RM*1.8;
+                            if (RM<MAX_SPEED)
+                            {
+                                RM=-MAX_SPEED;
+                            }
+                            
+                            
+                            LM = LM - LM*msg->axes[0];
+                            if (LM<(0.2*(MAX_SPEED)))
+                            {
+                                LM=0.2*(MAX_SPEED);
+                            }
                         }
                         else
                         {
-                            //cout<<"ELSE 1"<<endl;
-                            LM = (MAX_SPEED)*(1-fabs(msg->axes[0]));
-                            RM = -(MAX_SPEED)*(fabs(msg->axes[0]));
+                            //ROS_INFO("NORMAL");
+                            
+                            RM = RM + RM*msg->axes[0];
+                            if (RM<(-MAX_SPEED))
+                            {
+                                RM=-MAX_SPEED;
+                            }
+                            LM = LM - LM*msg->axes[0];
+                            if (LM<(0.2*(MAX_SPEED)))
+                            {
+                                LM=0.2*(MAX_SPEED);
+                            }
+                        }*/
+                    }
+                    else if (msg->axes[0]<0)//strofi de3ia
+                    {
+                        LM = LM - LM*msg->axes[0];
+                        if (LM>(MAX_SPEED))
+                        {
+                            LM=MAX_SPEED;
+                        }
+                        RM = RM + RM*msg->axes[0];
+                        if (RM>(-0.2*(MAX_SPEED)))
+                        {
+                            RM=-0.2*(MAX_SPEED);
+                        }
+                        /*
+                        if ((abs(LM)-abs(RM))<50)
+                        {
+                            RM = RM+50 ;
+                        }
+                        
+                        //ROS_INFO("STROFI MPROSTA DE3IA");
+                        if(msg->axes[0]<(-0.8))//apotomi strofi
+                        {
+                            //ROS_INFO("APOTOMA");
+                            
+                            LM = LM*1.8;
+                            if (LM>MAX_SPEED)
+                            {
+                                LM=MAX_SPEED;
+                            }
+                            
+                            //RM<0
+                            //msg-axes[0] <0
+                            RM = RM - RM*msg->axes[0];
+                            if (RM<(-0.2*(MAX_SPEED)))
+                            {
+                                RM=-0.2*(MAX_SPEED);
+                            }
+                        }
+                        else
+                        {   
+                            //ROS_INFO("NORMAL");
+                            LM = LM - LM*msg->axes[0];
+                            if (LM>MAX_SPEED)
+                            {
+                                LM=MAX_SPEED;
+                            }
+                            RM = RM + RM*msg->axes[0];
+                            if (RM<(-0.2*(MAX_SPEED)))
+                            {
+                                RM=-0.2*(MAX_SPEED);
+                            }
+                        }*/
+                    }
+                }
+                else if (msg->axes[1]<0)//kinisi pisw
+                {   
+                    RM = -MAX_SPEED*msg->axes[1]; //>0
+                    LM = MAX_SPEED*msg->axes[1]; //<0
+                    if(msg->axes[0]>0)//strofi aristera
+                    {
+                        RM = RM + RM*msg->axes[0];
+                        if (RM>(MAX_SPEED))
+                        {
+                            RM=MAX_SPEED;
+                        }
+                        LM = LM - LM*msg->axes[0];
+                        if (LM>(-0.2*(MAX_SPEED)))
+                        {
+                            LM=-0.2*(MAX_SPEED);
+                        }
+                        /*
+                        //ROS_INFO("STROFI PISW ARISTERA");
+                        if(msg->axes[0]>0.8)//apotomi strofi
+                        {
+                            //axes[0]>0
+                            //RM >0
+                            //theloyme na ay3h8ei to RM
+                            //ROS_INFO("APOTOMA");
+                            
+                            RM = RM*1.8;
+                            if (RM>MAX_SPEED)
+                            {
+                                RM=MAX_SPEED;
+                            }
+                            
+                            //LM <0
+                            //msg->axes[0] > 0
+                            //theloyme na meiw8ei to LM
+                            LM = LM - LM*msg->axes[0];
+                            if (LM>(-0.2*(MAX_SPEED)))
+                            {
+                                LM=-0.2*(MAX_SPEED);
+                            }
+                        }
+                        else
+                        {
+                            //axes[0]>0
+                            //RM >0
+                            //theloyme na ay3h8ei to RM
+                            //ROS_INFO("NORMAL");
+                            
+                            RM = RM + RM*msg->axes[0];
+                            if (RM>MAX_SPEED)
+                            {
+                                RM=MAX_SPEED;
+                            }
+                            
+                            //LM <0
+                            //msg->axes[0] > 0
+                            //theloyme na meiw8ei to LM
+                            LM = LM - LM*msg->axes[0];
+                            if (LM>(-0.2*(MAX_SPEED)))
+                            {
+                                LM=-0.2*(MAX_SPEED);
+                            }
                         }
                         */
                     }
-                    else if (msg->axes[0] < 0)//de3ia
+                    else if (msg->axes[0]<0)//strofi de3ia
                     {
-                        LM = -MAX_SPEED*msg->axes[0];
-                        RM = -MAX_SPEED*msg->axes[0];
-                        /*
-                        if(msg->axes[0]==-0.5)
+                        LM = LM - LM*msg->axes[0];
+                        if (LM<(-MAX_SPEED))
                         {
-                            LM = MAX_SPEED/2;
-                            RM = MAX_SPEED/2;
+                            LM = -MAX_SPEED;
                         }
-                        else if (msg->axes[0] > - 0.5)
-                        {   
-                            //cout<<"IF2"<<endl;
-                            LM = (MAX_SPEED)*(1-fabs(msg->axes[0]));
-                            RM = -(MAX_SPEED)*(fabs(msg->axes[0]));
-                            
+                        RM = RM + RM*msg->axes[0];
+                        if (RM<(0.2*(MAX_SPEED)))
+                        {
+                            RM=0.2*(MAX_SPEED);
+                        }
+                        /*
+                        //ROS_INFO("STROFI PISW DE3IA");
+                        //RM > 0 8eloyme na meiw8ei
+                        //LM < 0 8eloyme na af3i8ei
+                        //msg->axes[0] < 0
+                        if(msg->axes[0]<(-0.8))//apotomi strofi
+                        {
+                            //ROS_INFO("APOTOMA");
+                            LM = LM*1.8;
+                            if (LM<-(MAX_SPEED))
+                            {
+                                LM=-MAX_SPEED;
+                            }
+                            RM = RM + RM*msg->axes[0];
+                            if (RM<(0.2*(MAX_SPEED)))
+                            {
+                                RM=0.2*(MAX_SPEED);
+                            }
                         }
                         else
-                        {
-                            //cout<<"ELSE2"<<endl;
-                            LM = (MAX_SPEED)*(fabs(msg->axes[0]));
-                            RM = -(MAX_SPEED)*(1-fabs(msg->axes[0]));
+                        {   
+                            //ROS_INFO("NORMAL");
+                            LM = LM - LM*msg->axes[0];
+                            if (LM<-(MAX_SPEED))
+                            {
+                                LM=-MAX_SPEED;
+                            }
+                            RM = RM + RM*msg->axes[0];
+                            if (RM<(0.2*(MAX_SPEED)))
+                            {
+                                RM=0.2*(MAX_SPEED);
+                            }
                         }
                         */
-                    }                    
+                    }
                 }
             }
         }
-        
         device.SetCommand(_GO,1, RM);// RIGHT
         device.SetCommand(_GO,2, LM);//LEFT
         cout<<"LEFT MOTOR :"<< LM<<endl;
@@ -276,6 +371,10 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         {
             ROS_INFO("SAVING MAP as \"mymap\"");
             system("rosrun map_server map_saver -f mymap &");
+        }
+        if(msg->buttons[2]==1)
+        {
+             system("mplayer -really-quiet /home/skel/blaster.mp3 &");
         }
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
 		{	
@@ -326,56 +425,186 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
 {	
-	/*
-	# This expresses velocity in free space broken into its linear and angular parts.
-	Vector3  linear
-	Vector3  angular
-	device.SetCommand(_GO,1, RM);// RIGHT anti8eta
-	
-	double linx =msg->linear.x;
-	double liny =msg->linear.y;
-	double linz =msg->linear.z;
-	double angx =msg->angular.x;
-	double angy =msg->angular.y;
-	double angz =msg->angular.z;
-	* */
-    double linx =msg->linear.x;
-    if (msg->linear.x!=0)
-	{
-		RM = (-msg->linear.x*2 - 1/*- msg->angular.z*WHEEL_BASE_WIDTH/2*/)*MAX_SPEED;
-		LM = (msg->linear.x*2 - 1/*+ msg->angular.z*WHEEL_BASE_WIDTH/2*/)*MAX_SPEED;
-		ROS_INFO("RM : %d" , RM);
-		ROS_INFO("LM : %d" , LM);
-		device.SetCommand(_GO,1, RM);
-		device.SetCommand(_GO,2, LM);
-        if(msg->angular.z!=0)
+    linx = msg->linear.x;
+    angz = msg->angular.z;
+    if((((fabs(linx)-fabs(linx_prev)))>0.1)||(((fabs(angz)-fabs(angz_prev)))>0.1))
+    {
+        linx_prev=linx;
+        angz_prev=angz;
+        //scale cmd_vel to [-1,1]
+        linx=(msg->linear.x / ((MAX_LIN_VEL - (MIN_LIN_VEL) / (1 - (-1)))) - 1);
+        angz=(msg->angular.z / ((MAX_ROT_VEL - (MIN_ROT_VEL) / (1 - (-1)))) - 1);
+        if(linx==0)//akinito oxhma
         {
-            if(msg->angular.z > 0)
+            if(angz!=0)//epitopia peristrofi
             {
-                LM = LM - LM * fabs(msg->angular.z);
-            }
-            else if(msg->angular.z < 0)
-            {
-                RM = RM - RM * fabs(msg->angular.z);
+                RM = -MAX_SPEED*angz;
+                LM = -MAX_SPEED*angz;
             }
         }
-	}
-	else if (msg->angular.z!=0)
-	{
-		RM = (- msg->angular.z*2 - 1)*MAX_SPEED/2;
-		LM = (- msg->angular.z*2 - 1)*MAX_SPEED/2;
-		ROS_INFO("RM : %d" , RM);
-		ROS_INFO("LM : %d" , LM);
-		device.SetCommand(_GO,1, RM);
-		device.SetCommand(_GO,2, LM);
-	}
-	else
-	{
-		device.SetCommand(_GO,1, 0);// RIGHT
-		device.SetCommand(_GO,2, 0);//LEFT
-        cout<<"ARISTERO MOTORI :"<< LM<<endl;
-        cout<<"DEKSIO MOTORI :"<<RM<<endl;
-	}
+        else
+        {   
+            RM = -MAX_SPEED*linx;
+            LM = MAX_SPEED*linx;
+            if(linx>0)//kinisi mprosta
+            {   
+                if(angz>0)//strofi aristera
+                {
+                    //ROS_INFO("STROFI MPROSTA ARISTERA");
+                    if(angz>0.8)//apotomi strofi
+                    {
+                        //ROS_INFO("APOTOMA");
+                        RM = RM*1.8;
+                        if (RM<MAX_SPEED)
+                        {
+                            RM=-MAX_SPEED;
+                        }
+                        LM = LM - LM*angz;
+                        if (LM<(0.2*(MAX_SPEED)))
+                        {
+                            LM=0.2*(MAX_SPEED);
+                        }
+                    }
+                    else
+                    {
+                    //ROS_INFO("NORMAL");
+                        RM = RM + RM*angz;
+                        if (RM<(-MAX_SPEED))
+                        {
+                            RM=-MAX_SPEED;
+                        }
+                        LM = LM - LM*angz;
+                        if (LM<(0.2*(MAX_SPEED)))
+                        {
+                            LM=0.2*(MAX_SPEED);
+                        }
+                    }
+                }
+                else if (angz<0)//strofi de3ia
+                {
+                //ROS_INFO("STROFI MPROSTA DE3IA");
+                    if(angz<(-0.8))//apotomi strofi
+                    {
+                        //ROS_INFO("APOTOMA");
+                        LM = LM*1.8;
+                        if (LM>MAX_SPEED)
+                        {
+                            LM=MAX_SPEED;
+                        }
+                        //RM<0
+                        //msg-axes[0] <0
+                        RM = RM - RM*angz;
+                        if (RM<(-0.2*(MAX_SPEED)))
+                        {
+                            RM=-0.2*(MAX_SPEED);
+                        }
+                    }
+                    else
+                    {   
+                    //ROS_INFO("NORMAL");
+                        LM = - LM*angz;
+                        if (LM>MAX_SPEED)
+                            {
+                                LM=MAX_SPEED;
+                            }
+                        RM = RM + RM*angz;
+                        if (RM<(-0.2*(MAX_SPEED)))
+                        {
+                            RM=-0.2*(MAX_SPEED);
+                        }
+                    }
+                }
+            }
+            else if (linx<0)//kinisi pisw
+            {   
+                RM = -MAX_SPEED*linx; //>0
+                LM = MAX_SPEED*linx; //<0
+            if(angz>0)//strofi aristera
+            {
+                //ROS_INFO("STROFI PISW ARISTERA");
+                if(angz>0.8)//apotomi strofi
+                {
+                    //axes[0]>0
+                    //RM >0
+                    //theloyme na ay3h8ei to RM
+                    //ROS_INFO("APOTOMA");
+                    RM = RM*1.8;
+                    if (RM>MAX_SPEED)
+                    {
+                        RM=MAX_SPEED;
+                    }
+                    //LM <0
+                    //angz > 0
+                    //theloyme na meiw8ei to LM
+                    LM = LM - LM*angz;
+                    if (LM>(-0.2*(MAX_SPEED)))
+                    {
+                        LM=-0.2*(MAX_SPEED);
+                    }
+                }
+                else
+                {
+                //axes[0]>0
+                //RM >0
+                //theloyme na ay3h8ei to RM
+                //ROS_INFO("NORMAL");
+                    RM = RM + RM*angz;
+                    if (RM>MAX_SPEED)
+                        {
+                            RM=MAX_SPEED;
+                        }
+                        //LM <0
+                        //angz > 0
+                        //theloyme na meiw8ei to LM
+                        LM = LM - LM*angz;
+                        if (LM>(-0.2*(MAX_SPEED)))
+                        {
+                            LM=-0.2*(MAX_SPEED);
+                        }
+                    }
+                }
+                else if (angz<0)//strofi de3ia
+                {
+                    //ROS_INFO("STROFI PISW DE3IA");
+                    //RM > 0 8eloyme na meiw8ei
+                    //LM < 0 8eloyme na af3i8ei
+                    //angz < 0
+                    if(angz<(-0.8))//apotomi strofi
+                    {
+                        //ROS_INFO("APOTOMA");
+                        LM = LM*1.8;
+                        if (LM<-(MAX_SPEED))
+                        {
+                            LM=-MAX_SPEED;
+                        }
+                        RM = RM + RM*angz;
+                        if (RM<(0.2*(MAX_SPEED)))
+                        {
+                            RM=0.2*(MAX_SPEED);
+                        }
+                    }
+                    else
+                    {   
+                        //ROS_INFO("NORMAL");
+                        LM = LM - LM*angz;
+                        if (LM<-(MAX_SPEED))
+                        {
+                            LM=-MAX_SPEED;
+                        }
+                        RM = RM + RM*angz;
+                        if (RM<(0.2*(MAX_SPEED)))
+                        {
+                            RM=0.2*(MAX_SPEED);
+                        }
+                    }
+                }
+            }
+        }
+        device.SetCommand(_GO,1, RM);// RIGHT
+        device.SetCommand(_GO,2, LM);//LEFT
+        cout<<"LEFT MOTOR :"<< LM<<endl;
+        cout<<"RIGHT MOTOR :"<<RM<<endl;
+    }
 }
 
 void calcOdom()
@@ -393,43 +622,7 @@ void calcOdom()
     ROS_INFO("ODOM LENC : %d",lenc);
     ROS_INFO("ODOM RENC : %d",lenc);
 }
-/*
-void calcOdom_()
-{
-    ROS_INFO("left_%d Right_%d",lenc,-renc);
-    //ros::Duration(0.5).sleep();
-    seconds= (current_time - last_time).toSec();
-    mr = seconds*(-renc/60.0)*(DIAMETER*PI);
-    ml = seconds*(lenc/60.0)*(DIAMETER*PI);
-    //mr = -renc*(DIAMETER*PI);
-    //ml = lenc*(DIAMETER*PI);
-    dist=(ml+mr)/2.0;
-    total_dist +=fabs(dist);
-    mth_prev = mth;
-    mth += (ml-mr)/WHEEL_BASE_WIDTH;
-    vth = (mth - mth_prev)/seconds;
-    deg -=(float)((int)(mth/TWOPI))*TWOPI;
-    posx_prev=posx;
-    posy_prev=posy;
-    //ROS_INFO("COS %f",cos(mth*RADS));
-    //ROS_INFO("SIN %f",sin(mth*RADS));
-    posx += (dist*(cos(mth*RADS)));
-    posy += (dist*(sin(mth*RADS)));
-    vx = (posx - posx_prev) / seconds;
-    vy = (posy - posy_prev) / seconds;
-    //ROS_INFO("MR : %f",mr);
-    //ROS_INFO("ML : %f",ml);
-    //ROS_INFO("POSX : %f",posx);
-    //ROS_INFO("POSY : %f",posy);
-    //ROS_INFO("mth : %f",mth);
-    //ROS_INFO("VX : %f",vx);
-    //ROS_INFO("VY : %f",vy);
-    //ROS_INFO("VTH : %f",vth);
-    mr=0;
-    ml=0;
-    dist=0;
-}
-*/
+
 int main(int argc, char *argv[])
 {	
 	int status = device.Connect("/dev/ttyACM1");
@@ -474,20 +667,7 @@ int main(int argc, char *argv[])
 while (ros::ok())
     {	
 		ros::spinOnce();
-        /*
-        current_time = ros::Time::now();
-        seconds = current_time.toSec() - last_time.toSec();
-        //ROS_INFO("SECONDS : %f",seconds);
-        if(seconds > 0.2)
-        {
-            //ROS_INFO("IN LOOP");
-            //ros::Duration(3).sleep();
-            calcOdom();
-            last_time = ros::Time::now();
-            current_time = ros::Time::now();
-
-        }
-        */
+        
      }   
 	device.Disconnect();
 	return 0;
