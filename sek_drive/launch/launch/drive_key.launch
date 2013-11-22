@@ -1,0 +1,7 @@
+<launch>
+    <node pkg="sek_drive" type="sek_key_teleop.py" name="key_teleop" output="screen" required="true"/>
+    <node pkg="sek_drive" type="drive_base" name="drive_base" output="screen" required="true"/>
+    <node pkg="joy" type="joy_node" name="joy_node" output="screen"/>
+    <node name="servo_mast" pkg="servo_mast" type="servo_mast" />
+    <node name="kinect_aux" pkg="kinect_aux" type="kinect_aux_node" />
+</launch>
