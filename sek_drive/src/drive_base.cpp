@@ -366,7 +366,10 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             //ros::Duration(2).sleep();
             //system("killall -9 mplayer");
 		}
-        
+        if(msg->buttons[1]==1)
+        {
+            system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
+        }
         if(msg->buttons[3]==1)
         {
             ROS_INFO("SAVING MAP as \"mymap\"");
@@ -440,6 +443,11 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
             {
                 RM = -MAX_SPEED*angz;
                 LM = -MAX_SPEED*angz;
+                if(abs(RM)<(0.2*MAX_SPEED))
+                {
+                    RM = (RM/(abs(RM)))*(0.2*MAX_SPEED);
+                    LM = (LM/(abs(LM)))*(0.2*MAX_SPEED);
+                }
             }
         }
         else
