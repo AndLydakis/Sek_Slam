@@ -95,6 +95,17 @@ target_link_libraries(vel_logger
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
 )
+add_executable(path_sender src/path_sender.cpp)
+target_link_libraries(path_sender
+  ${catkin_LIBRARIES}
+  #${Boost_LIBRARIES}
+)
+
+add_executable(init_pose src/init_pose.cpp)
+target_link_libraries(init_pose
+  ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+)
 #add_executable(robodev src/robodev.cpp)
 #add_executable(RoboteqDevice src/RoboteqDevice.cpp)
 ## Add cmake target dependencies of the executable/library
