@@ -86,33 +86,37 @@ void amclCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     amcl_w = msg->pose.orientation.w;
 }
 
+
 int main(int argc, char *argv[])
 {	
     ros::init(argc, argv, "move_script");
     ros::NodeHandle n;
 	ros::Duration(0.1).sleep();
 	ros::Subscriber sub = n.subscribe("sent_path", 1, pathSentCallback);
-    ros::Subscriber sub2 = n.subscribe("cancel_path",1, cancelPathCallback);
-    ros::Subscriber sub3 = n.subscribe("amcl_pose",1, amclCallback);
+    ros::Subscriber sub2 = n.subscribe("cancel_path", 1, cancelPathCallback);
+    ros::Subscriber sub3 = n.subscribe("amcl_pose", 1, amclCallback);
+    //ros::Subscriber sub4 = n.subscribe("sent_in_pose", 1, initPoseCallback);
 	ros::Publisher path_pub = n.advertise<geometry_msgs::PoseStamped>("/move_base/goal", 50);
 	std::vector<geometry_msgs::PoseStamped>::iterator it ;
     while (ros::ok())
     {	
 		ros::spinOnce(); 
-        if (PATH_SENT==0)
+        if (PATH_SENT==1)
         {
             if(FIRST_GOAL_SET==0)
             {
-                cout<<"oeo"<<endl;
-                it = waypoints.begin();
-                if (it==waypoints.end())
+                if(waypoints.empty())
                 {
-                    cout<<"oeoeoeoeo"<<endl;
+                    PATH_SENT=0;
                     break;
                 }
                 cout<<"oeo"<<endl;
+                it = waypoints.begin();
+                cout<<"oeo"<<endl;
                 FIRST_GOAL_SET=1;
                 cout << *it;
+                it->header.frame_id = "map";
+                it->header.stamp = ros::Time::now();
                 path_pub.publish(*it);
                 cout<<"oeo"<<endl;
                 goal_x = it->pose.position.x;
@@ -124,7 +128,28 @@ int main(int argc, char *argv[])
             }
             else
             {
-                //while
+                if (isGoalReached)
+                {
+                    if(it==waypoints.end())
+                    {
+                        cout<<"Goal Reached !"<<endl;
+                        PATH_SENT=0;
+                        break;
+                    }
+                    it++;
+                    cout << *it;
+                    it->header.frame_id = "map";
+                    it->header.stamp = ros::Time::now();
+                    path_pub.publish(*it);
+                    cout<<"oeo"<<endl;
+                    goal_x = it->pose.position.x;
+                    cout<<"oeo"<<endl;
+                    goal_y = it->pose.position.y;
+                    goal_z = it->pose.orientation.z;
+                    goal_w = it->pose.orientation.w;
+                    cout<<"Goal (X Y Z)"<<goal_x<<" "<<goal_y<<" "<<goal_z<<" "<<goal_w<<endl;
+                    
+                }
             }
         }
     }

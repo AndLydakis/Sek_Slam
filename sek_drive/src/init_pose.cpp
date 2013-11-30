@@ -22,7 +22,9 @@
 #include <cmath> 
 
 geometry_msgs::PoseWithCovarianceStamped init_pose;
+geometry_msgs::PoseStamped goal_pose;
 int sent=1;
+int goal_sent=0;
 
 void initPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
@@ -32,48 +34,43 @@ void initPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& 
     sent=0;
 }
 
+void goalCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+    goal_pose.pose=msg->pose;
+    goal_pose.header.frame_id="/map";
+    goal_pose.header.stamp = ros::Time::now();
+    goal_sent=1;
+}
 int main(int argc, char *argv[])
 {	
     ros::init(argc, argv, "toplel");
     ros::NodeHandle n;
     //ros::Subscriber sub4 = n.subscribe("sent_in_pose", 1, initPoseCallback);
-	ros::Publisher path_pub = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 5,true);
+	ros::Publisher init_pub = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 5,true);
+    ros::Publisher goal_pub = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 5,true);
     ros::Subscriber sub = n.subscribe("initial_pose", 50, initPoseCallback);
-
+    ros::Subscriber sub2 = n.subscribe("goal_pose", 50, goalCallback);
    
    while (ros::ok())
     {	
         
-        cout<<"wow so spin"<<endl;
-        ros::Duration(1).sleep();
+        //cout<<"wow so spin"<<endl;
+        ros::Duration(0.2).sleep();
         if (sent==0)
         {
-            cout<<"oeo"<<endl;
-            /*
-            init_pose.header.frame_id = "/map";
-            init_pose.pose.pose.position.x=-0.35;
-            init_pose.pose.pose.position.y=0.415857434273;
-            init_pose.pose.pose.position.z=0.0;
-                
-            init_pose.pose.pose.orientation.x=0.0;
-            init_pose.pose.pose.orientation.y=0.0;
-            init_pose.pose.pose.orientation.z=-0.0179285788903;
-            init_pose.pose.pose.orientation.w= 0.999839270112;
-            
-            init_pose.pose.covariance[0]=0.25;
-            init_pose.pose.covariance[7]=0.25;
-            init_pose.pose.covariance[35]=0.06853891945200942;
-            */
-            path_pub.publish(init_pose);
+            //cout<<"oeo"<<endl;
+            init_pub.publish(init_pose);
             sent=1;
        
         }
-        else
+        if(goal_sent==1)
         {
-            ros::spinOnce();
-            //ros::shutdown();
+            cout<<"pewpewpew"<<endl;
+            goal_pub.publish(goal_pose);
+            goal_sent=0;
         }
-        
+        ros::spinOnce();
+
         
    } 
     return 0;

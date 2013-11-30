@@ -26,7 +26,7 @@ using namespace std;
 #define WHEEL_BASE_WIDTH 0.40 //m,  
 #define TWOPI /*360*/6.2831853070
 #define RADS 57.2958
-#define MAX_SPEED 800 //command
+#define MAX_SPEED 1200 //command
 #define MAX_RPM 360	//RPM
 #define MAX_LIN_VEL  2
 #define MIN_LIN_VEL -2
@@ -129,45 +129,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                         {
                             LM=0.2*(MAX_SPEED);
                         }
-                        /*
-                        if ((abs(LM)-abs(RM))<50)
-                        {
-                            LM = LM-50 ;
-                        }
                         
-                        //ROS_INFO("STROFI MPROSTA ARISTERA");
-                        if(msg->axes[0]>0.8)//apotomi strofi
-                        {
-                            //ROS_INFO("APOTOMA");
-                           
-                            RM = RM*1.8;
-                            if (RM<MAX_SPEED)
-                            {
-                                RM=-MAX_SPEED;
-                            }
-                            
-                            
-                            LM = LM - LM*msg->axes[0];
-                            if (LM<(0.2*(MAX_SPEED)))
-                            {
-                                LM=0.2*(MAX_SPEED);
-                            }
-                        }
-                        else
-                        {
-                            //ROS_INFO("NORMAL");
-                            
-                            RM = RM + RM*msg->axes[0];
-                            if (RM<(-MAX_SPEED))
-                            {
-                                RM=-MAX_SPEED;
-                            }
-                            LM = LM - LM*msg->axes[0];
-                            if (LM<(0.2*(MAX_SPEED)))
-                            {
-                                LM=0.2*(MAX_SPEED);
-                            }
-                        }*/
                     }
                     else if (msg->axes[0]<0)//strofi de3ia
                     {
@@ -181,45 +143,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                         {
                             RM=-0.2*(MAX_SPEED);
                         }
-                        /*
-                        if ((abs(LM)-abs(RM))<50)
-                        {
-                            RM = RM+50 ;
-                        }
                         
-                        //ROS_INFO("STROFI MPROSTA DE3IA");
-                        if(msg->axes[0]<(-0.8))//apotomi strofi
-                        {
-                            //ROS_INFO("APOTOMA");
-                            
-                            LM = LM*1.8;
-                            if (LM>MAX_SPEED)
-                            {
-                                LM=MAX_SPEED;
-                            }
-                            
-                            //RM<0
-                            //msg-axes[0] <0
-                            RM = RM - RM*msg->axes[0];
-                            if (RM<(-0.2*(MAX_SPEED)))
-                            {
-                                RM=-0.2*(MAX_SPEED);
-                            }
-                        }
-                        else
-                        {   
-                            //ROS_INFO("NORMAL");
-                            LM = LM - LM*msg->axes[0];
-                            if (LM>MAX_SPEED)
-                            {
-                                LM=MAX_SPEED;
-                            }
-                            RM = RM + RM*msg->axes[0];
-                            if (RM<(-0.2*(MAX_SPEED)))
-                            {
-                                RM=-0.2*(MAX_SPEED);
-                            }
-                        }*/
                     }
                 }
                 else if (msg->axes[1]<0)//kinisi pisw
@@ -238,53 +162,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                         {
                             LM=-0.2*(MAX_SPEED);
                         }
-                        /*
-                        //ROS_INFO("STROFI PISW ARISTERA");
-                        if(msg->axes[0]>0.8)//apotomi strofi
-                        {
-                            //axes[0]>0
-                            //RM >0
-                            //theloyme na ay3h8ei to RM
-                            //ROS_INFO("APOTOMA");
-                            
-                            RM = RM*1.8;
-                            if (RM>MAX_SPEED)
-                            {
-                                RM=MAX_SPEED;
-                            }
-                            
-                            //LM <0
-                            //msg->axes[0] > 0
-                            //theloyme na meiw8ei to LM
-                            LM = LM - LM*msg->axes[0];
-                            if (LM>(-0.2*(MAX_SPEED)))
-                            {
-                                LM=-0.2*(MAX_SPEED);
-                            }
-                        }
-                        else
-                        {
-                            //axes[0]>0
-                            //RM >0
-                            //theloyme na ay3h8ei to RM
-                            //ROS_INFO("NORMAL");
-                            
-                            RM = RM + RM*msg->axes[0];
-                            if (RM>MAX_SPEED)
-                            {
-                                RM=MAX_SPEED;
-                            }
-                            
-                            //LM <0
-                            //msg->axes[0] > 0
-                            //theloyme na meiw8ei to LM
-                            LM = LM - LM*msg->axes[0];
-                            if (LM>(-0.2*(MAX_SPEED)))
-                            {
-                                LM=-0.2*(MAX_SPEED);
-                            }
-                        }
-                        */
+                        
                     }
                     else if (msg->axes[0]<0)//strofi de3ia
                     {
@@ -298,40 +176,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                         {
                             RM=0.2*(MAX_SPEED);
                         }
-                        /*
-                        //ROS_INFO("STROFI PISW DE3IA");
-                        //RM > 0 8eloyme na meiw8ei
-                        //LM < 0 8eloyme na af3i8ei
-                        //msg->axes[0] < 0
-                        if(msg->axes[0]<(-0.8))//apotomi strofi
-                        {
-                            //ROS_INFO("APOTOMA");
-                            LM = LM*1.8;
-                            if (LM<-(MAX_SPEED))
-                            {
-                                LM=-MAX_SPEED;
-                            }
-                            RM = RM + RM*msg->axes[0];
-                            if (RM<(0.2*(MAX_SPEED)))
-                            {
-                                RM=0.2*(MAX_SPEED);
-                            }
-                        }
-                        else
-                        {   
-                            //ROS_INFO("NORMAL");
-                            LM = LM - LM*msg->axes[0];
-                            if (LM<-(MAX_SPEED))
-                            {
-                                LM=-MAX_SPEED;
-                            }
-                            RM = RM + RM*msg->axes[0];
-                            if (RM<(0.2*(MAX_SPEED)))
-                            {
-                                RM=0.2*(MAX_SPEED);
-                            }
-                        }
-                        */
+                        
                     }
                 }
             }
@@ -379,6 +224,34 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         {
              system("mplayer -really-quiet /home/skel/blaster.mp3 &");
         }
+        if(msg->buttons[6]==1)//START RECORDING
+        {
+            
+            if(REC==0)
+            {
+                REC=1; 
+                ROS_INFO("Start Recording");
+                system("roslaunch sek_drive record.launch &");
+                ros::Duration(3).sleep();
+            }
+            
+        }
+        if(msg->buttons[7])//STOP RECORDING
+        {
+            if(REC==1)
+            {
+                REC=0;
+                ROS_INFO("Stop Recording");
+                system("rosnode kill /maneuvers/record_man &");
+                ros::Duration(3).sleep();
+            } 
+        }
+        if(msg->buttons[4])
+        {
+            ROS_INFO("Playing Maneuver");
+            system("rosbag play /home/skel/.ros/maneuver.bag &");
+        }
+        
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
 		{	
 ;
@@ -393,8 +266,6 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		}
 		else if((msg->buttons[8]==1)&&(msg->buttons[9]==1))//SELECT & START
 		{
-			//device.SetConfig(_RWD, 1, 0);
-			//device.SetConfig(_RWD, 2, 0);
 			printf("Emergency Shutdown\n");			
 			if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
 			{
@@ -417,8 +288,6 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			ros::shutdown();
 		}
 	}
-   
-
     //cout<<"RENC : "<<renc<<endl;
     //cout<<"LENC : "<<lenc<<endl;
     cout<<"LEFT MOTOR :"<< LM<<endl;
