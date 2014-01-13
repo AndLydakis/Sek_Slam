@@ -8,6 +8,7 @@
 #include <math.h>
 #include <sensor_msgs/Joy.h>
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/Twist.h>
 #include <tf/transform_broadcaster.h>
 #include "robodev.cpp"
 #include <sdc2130_skel/RoboteqDevice.h>
@@ -26,12 +27,12 @@ using namespace std;
 #define WHEEL_BASE_WIDTH 0.40 //m,  
 #define TWOPI /*360*/6.2831853070
 #define RADS 57.2958
-#define MAX_SPEED 1200 //command
+#define MAX_SPEED 800 //command
 #define MAX_RPM 360	//RPM
 #define MAX_LIN_VEL  2
-#define MIN_LIN_VEL -2
+#define MIN_LIN_VEL  -2
 #define MAX_ROT_VEL  4
-#define MIN_ROT_VEL -4
+#define MIN_ROT_VEL  -4
 
 /*                                            
 double circumference = PI* DIAMETER; //0.47877872040708448954
@@ -40,18 +41,26 @@ double max_ang_vle = max_lin_vel/(WHEEL_BASE_WIDTH/2);//0.14363361612212534686
 int six = 0;
 int gyro_speed = 0;
 */
+double max_lin = 2;
+double min_lin = -2;
+double max_rot = 4;
+double min_rot = - 4;
+double c__1=2/(max_lin - min_lin);
+double c__2=2/(max_rot - min_rot);
 int LM = 0 ;
 int RM = 0 ;
 int HB = 0 ; //handbrake signal
 int ESD = 0 ; //emergency shutdown signal
 int MODE = 0 ;
 int REC = 0  ;
+int PLAYING = 0;
+int CAMERA_ON = 0;
 int status;
 string response = "";
 RoboteqDevice device;
 int i ;	
 int ping_ret,p_status;
-
+int sign = 0;
 int speed ;	
 int count_ = 0;
 int lenc = 0;
@@ -74,13 +83,19 @@ ofstream file;
 
 unsigned int u;
 FILE *output;
+int result_2 ;
+
+float scaleRange(double in, double oldMin, double oldMax, double newMin, double newMax)
+{
+    return (in / ((oldMax - oldMin) / (newMax - newMin))) + newMin;
+}
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {	
-    //current_time=ros::Time::now();
-    
+   
 	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
+        cout<<"if"<<endl;
 		//ROS_INFO("HEAR HEAR");
 		if(msg->axes[6]==1)//MPROS-PISW
 		{
@@ -93,7 +108,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			RM = MAX_SPEED;
 			LM = -MAX_SPEED;
             //gyro_speed = LM ;
-            system("mplayer -really-quiet /home/skel/beep2.mp3&");
+            //system("mplayer -really-quiet /home/skel/beep2.mp3&");
             
 		}
 		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
@@ -188,7 +203,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         //calcOdom();
         if(msg->buttons[0]==1)
 		{	
-            system("mplayer -really-quiet /home/skel/horn.mp3 &");
+            //system("mplayer -really-quiet /home/skel/horn.mp3 &");
             //ros::Duration(2).sleep();
             //system("killall -9 mplayer");
 		}
@@ -201,13 +216,14 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 	
 	else 
 	{
-        system("killall -9 mplayer");
+        cout<<"else"<<endl;
+        //system("killall -9 mplayer");
 		device.SetCommand(_GO,1, 0);// RIGHT
 		device.SetCommand(_GO,2, 0);//LEFT
         
 		if(msg->buttons[0]==1)
 		{	
-            system("mplayer -really-quiet /home/skel/horn.mp3 &");
+            //system("mplayer -really-quiet /home/skel/horn.mp3 &");
             //ros::Duration(2).sleep();
             //system("killall -9 mplayer");
 		}
@@ -221,10 +237,27 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             system("rosrun map_server map_saver -f mymap &");
         }
         if(msg->buttons[2]==1)
-        {
-             system("mplayer -really-quiet /home/skel/blaster.mp3 &");
+        {   
+            if(CAMERA_ON==0)
+            {
+                cout<<"Camera on"<<endl;
+                ROS_INFO("Starting Streaming");
+                system("roslaunch sek_drive mast_kinect.launch &");
+                CAMERA_ON = 1 ;
+            }
+            else
+            {
+                cout<<"Camera off"<<endl;
+                ROS_INFO("Shutting Down Streaming");
+                system("rosnode kill /camera/camera_nodelet_manager &");
+                system("rosnode kill /mjepg_server &");
+                ros::Duration(3).sleep();
+                CAMERA_ON = 0;
+                //system("rosnode cleanup")
+                system("/home/skel/cleanup.sh ");
+            }
         }
-        if(msg->buttons[6]==1)//START RECORDING
+        if(msg->buttons[6]==1)//START RECORDING //L1
         {
             
             if(REC==0)
@@ -236,7 +269,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             }
             
         }
-        if(msg->buttons[7])//STOP RECORDING
+        if(msg->buttons[7]==1)//STOP RECORDING //R1
         {
             if(REC==1)
             {
@@ -244,21 +277,36 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                 ROS_INFO("Stop Recording");
                 system("rosnode kill /maneuvers/record_man &");
                 ros::Duration(3).sleep();
+                system("/home/skel/cleanup.sh &");
             } 
         }
-        if(msg->buttons[4])
+        if(msg->buttons[4]==1)//START PLAYING //L2
         {
-            ROS_INFO("Playing Maneuver");
-            system("rosbag play /home/skel/.ros/maneuver.bag &");
+            if(PLAYING==0)
+            {
+                PLAYING=1;
+                ROS_INFO("Playing Maneuver");
+                system("rosbag play /home/skel/.ros/maneuver.bag &");
+            }
         }
-        
+        if(msg->buttons[5]==1)//STOP PLAYING //R2
+        {
+            if(PLAYING==1)
+            {
+                PLAYING=0;
+                ROS_INFO("Stopping Maneuver");
+                system("killall -9 play");
+                system("/home/skel/cleanup.sh &");
+            }
+        }
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
 		{	
-;
-		}
+            ROS_INFO("Restarting Python Server");
+            system("rosrun robot_server robotserverBl.py &");
+        }
 		else if (msg->buttons[10]==1)
 		{
-
+            
 		}
 		else if (msg->buttons[11]==1)
 		{
@@ -279,13 +327,20 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 			{
 				cout<<"failed --> \n"<<status<<endl;
 				device.Disconnect();
-				ros::shutdown();
+                system("/home/skel/cleanup.sh &");
+                ros::shutdown();
 			}	
 			else
 			{
 			}
 			ROS_INFO("SHUTTING DOWN");
 			ros::shutdown();
+		}
+        if((msg->buttons[9]==1)&&(msg->buttons[8]==0))//START
+		{
+			ROS_INFO("Giving Start Signal");
+			system("/home/skel/start");
+			return;
 		}
 	}
     //cout<<"RENC : "<<renc<<endl;
@@ -295,17 +350,19 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 	
 }
 
-void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
+void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg2)
 {	
-    linx = msg->linear.x;
-    angz = msg->angular.z;
-    if((((fabs(linx)-fabs(linx_prev)))>0.1)||(((fabs(angz)-fabs(angz_prev)))>0.1))
-    {
-        linx_prev=linx;
-        angz_prev=angz;
-        //scale cmd_vel to [-1,1]
-        linx=(msg->linear.x / ((MAX_LIN_VEL - (MIN_LIN_VEL) / (1 - (-1)))) - 1);
-        angz=(msg->angular.z / ((MAX_ROT_VEL - (MIN_ROT_VEL) / (1 - (-1)))) - 1);
+    linx = msg2->linear.x*0.250000;
+    angz = msg2->angular.z*0.250000;
+    
+        if(linx==0 && angz ==0)
+        {
+            device.SetCommand(_GO,1, 0);// RIGHT
+            device.SetCommand(_GO,2, 0);//LEFT
+            return;
+        }
+        //ROS_INFO("LINX #2 : %f",linx);
+        //ROS_INFO("ANGZ #2 : %f",angz);
         if(linx==0)//akinito oxhma
         {
             if(angz!=0)//epitopia peristrofi
@@ -391,36 +448,44 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                         }
                     }
                 }
+                else //kamia strofi
+                {
+                    if(LM<(0.2*MAX_SPEED))
+                    {
+                        LM=0.2*MAX_SPEED;
+                        RM=-0.2*MAX_SPEED;
+                    } 
+                }
             }
             else if (linx<0)//kinisi pisw
             {   
                 RM = -MAX_SPEED*linx; //>0
                 LM = MAX_SPEED*linx; //<0
-            if(angz>0)//strofi aristera
-            {
-                //ROS_INFO("STROFI PISW ARISTERA");
-                if(angz>0.8)//apotomi strofi
-                {
-                    //axes[0]>0
-                    //RM >0
-                    //theloyme na ay3h8ei to RM
-                    //ROS_INFO("APOTOMA");
-                    RM = RM*1.8;
-                    if (RM>MAX_SPEED)
+                    if(angz>0)//strofi aristera
                     {
-                        RM=MAX_SPEED;
-                    }
-                    //LM <0
-                    //angz > 0
-                    //theloyme na meiw8ei to LM
-                    LM = LM - LM*angz;
-                    if (LM>(-0.2*(MAX_SPEED)))
+                    //ROS_INFO("STROFI PISW ARISTERA");
+                    if(angz>0.8)//apotomi strofi
                     {
-                        LM=-0.2*(MAX_SPEED);
+                        //axes[0]>0
+                        //RM >0
+                        //theloyme na ay3h8ei to RM
+                        //ROS_INFO("APOTOMA");
+                        RM = RM*1.8;
+                        if (RM>MAX_SPEED)
+                        {
+                            RM=MAX_SPEED;
+                        }
+                        //LM <0
+                        //angz > 0
+                        //theloyme na meiw8ei to LM
+                        LM = LM - LM*angz;
+                        if (LM>(-0.2*(MAX_SPEED)))
+                        {
+                            LM=-0.2*(MAX_SPEED);
+                        }
                     }
-                }
-                else
-                {
+                    else
+                    {
                 //axes[0]>0
                 //RM >0
                 //theloyme na ay3h8ei to RM
@@ -475,13 +540,21 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                         }
                     }
                 }
+                else //kamia strofi
+                {
+                    if(RM<(0.2*MAX_SPEED))
+                    {
+                        RM=0.2*MAX_SPEED;
+                        LM=-0.2*MAX_SPEED;
+                    } 
+                }
             }
         }
         device.SetCommand(_GO,1, RM);// RIGHT
         device.SetCommand(_GO,2, LM);//LEFT
         cout<<"LEFT MOTOR :"<< LM<<endl;
         cout<<"RIGHT MOTOR :"<<RM<<endl;
-    }
+    //}
 }
 
 void calcOdom()
@@ -518,7 +591,7 @@ int main(int argc, char *argv[])
 	ros::Duration(0.1).sleep();
 	ros::Subscriber sub = n.subscribe("joy", 1, teleopCallback);
 	ros::Subscriber sub2 = n.subscribe("cmd_vel", 1, cmdVelCallback);
-	ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
+	//ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
 	tf::TransformBroadcaster odom_broadcaster;
 	
 	ROS_INFO("- SetConfig(_DINA, 1, 1)...");

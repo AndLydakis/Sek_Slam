@@ -20,6 +20,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <cmath> 
+#include <actionlib/client/action_client.h>
+#include <actionlib/client/simple_action_client.h>
+#include <move_base_msgs/MoveBaseAction.h>
 
 int PATH_SENT = 0;
 int FIRST_GOAL_SET = 0;
@@ -42,6 +45,9 @@ int goal_w = 0;
 
 std::vector<geometry_msgs::PoseStamped> waypoints, poses;
 geometry_msgs::PoseStamped amcl_pose;
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveClient;
+
+//typedef SimpleClientGoalState MoveState;
 
 bool isGoalReached()
 {
@@ -86,21 +92,48 @@ void amclCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     amcl_w = msg->pose.orientation.w;
 }
 
-
+/*
+void initActionClients()
+{
+  actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction>* ac = new actionlib::SimpleActionClient("move_base", true);
+}
+*/
 int main(int argc, char *argv[])
 {	
-    ros::init(argc, argv, "move_script");
-    ros::NodeHandle n;
-	ros::Duration(0.1).sleep();
-	ros::Subscriber sub = n.subscribe("sent_path", 1, pathSentCallback);
-    ros::Subscriber sub2 = n.subscribe("cancel_path", 1, cancelPathCallback);
-    ros::Subscriber sub3 = n.subscribe("amcl_pose", 1, amclCallback);
-    //ros::Subscriber sub4 = n.subscribe("sent_in_pose", 1, initPoseCallback);
-	ros::Publisher path_pub = n.advertise<geometry_msgs::PoseStamped>("/move_base/goal", 50);
+    
+    // while(!ac.waitForServer(ros::Duration(5.0)))
+    ros::init(argc, argv, "path_sender");
+    ROS_INFO("1");
+    //ros::NodeHandle n;
+    ROS_INFO("2");
+    MoveClient ac("move_base", false);
+    /*
+    while(!ac.waitForServer(ros::Duration(5.0))){
+        ROS_INFO("Waiting for the move_base action server to come up");
+    }    ROS_INFO("Created simpleActionClient");
+    */
+    //MoveState state ;
+	//ros::Duration(0.1).sleep();
+    ROS_INFO("3");
+	//ros::Subscriber sub = n.subscribe("sent_path", 1, pathSentCallback);
+    //ros::Subscriber sub2 = n.subscribe("cancel_path", 1, cancelPathCallback);
+    //ros::Subscriber sub3 = n.subscribe("amcl_pose", 1, amclCallback);
+    ROS_INFO("4");
+	//ros::Publisher path_pub = n.advertise<geometry_msgs::PoseStamped>("/move_base/goal", 50);
+    ROS_INFO("5");
 	std::vector<geometry_msgs::PoseStamped>::iterator it ;
-    while (ros::ok())
+    ROS_INFO("6");
+    ROS_INFO("Creating simpleActionClient");
+    
+    ROS_INFO("Created SimpleClientGoalState"); 
+    //move_base_msgs::MoveBaseGoal goal;
+    ROS_INFO("WaitForResult"); 
+    //ac.waitForResult();
+    while (true)
     {	
-		ros::spinOnce(); 
+        cout<<"wow so spin"<<endl;
+        //ros::Duration(1).sleep();
+		//ros::spinOnce(); 
         if (PATH_SENT==1)
         {
             if(FIRST_GOAL_SET==0)
@@ -114,20 +147,22 @@ int main(int argc, char *argv[])
                 it = waypoints.begin();
                 cout<<"oeo"<<endl;
                 FIRST_GOAL_SET=1;
-                cout << *it;
+                //cout << *it;
                 it->header.frame_id = "map";
-                it->header.stamp = ros::Time::now();
-                path_pub.publish(*it);
+                //it->header.stamp = ros::Time::now();
+                //path_pub.publish(*it);
+                
                 cout<<"oeo"<<endl;
-                goal_x = it->pose.position.x;
+                //goal_x = it->pose.position.x;
                 cout<<"oeo"<<endl;
-                goal_y = it->pose.position.y;
-                goal_z = it->pose.orientation.z;
-                goal_w = it->pose.orientation.w;
-                cout<<"Goal (X Y Z)"<<goal_x<<" "<<goal_y<<" "<<goal_z<<" "<<goal_w<<endl;
+                //goal_y = it->pose.position.y;
+                //goal_z = it->pose.orientation.z;
+                //goal_w = it->pose.orientation.w;
+                //cout<<"Goal (X Y Z)"<<goal_x<<" "<<goal_y<<" "<<goal_z<<" "<<goal_w<<endl;
             }
             else
             {
+                //if ((state = ac.getState())== actionlib::SimpleClientGoalState::SUCCEEDED)
                 if (isGoalReached)
                 {
                     if(it==waypoints.end())
@@ -139,8 +174,8 @@ int main(int argc, char *argv[])
                     it++;
                     cout << *it;
                     it->header.frame_id = "map";
-                    it->header.stamp = ros::Time::now();
-                    path_pub.publish(*it);
+                    //it->header.stamp = ros::Time::now();
+                    //path_pub.publish(*it);
                     cout<<"oeo"<<endl;
                     goal_x = it->pose.position.x;
                     cout<<"oeo"<<endl;
