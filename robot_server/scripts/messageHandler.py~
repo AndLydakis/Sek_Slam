@@ -24,21 +24,25 @@ class handler(object):
                 print(state)
             except ValueError:
                     print("Not a valid number")
-            if (state==1):#metabash sthn katastash xeirismou axrhsimopoiontas koumpia
+            if (state==1):#metabash sthn katastash xeirismou xrhsimopoiontas koumpia
                 print("Simple control")
                 x=py_to_joy(s)
                 x.controller()
                 del x
             elif(state==2):#metabash sthn katastash xeirismou xrhsimopoiontas tous ais8hthres
                 print("Sensor control")
-                x=py_to_joy(s)
+                try:
+                    turnSens=float(s.recv(64))
+                    s.sendall("1")
+                    moveSens=float(s.recv(64))
+                except ValueError:
+                    print("Not a valid float {} , {}".format(turnSens,moveSens))
+                x=py_to_joy(s,self.turnSens,self.moveSens)
                 x.sensor_controller()
                 del x
             elif(state==0):
-                return state
+                return False
             #elif
                 #######
                 #######
             #elif (state=0):
-                
-                
