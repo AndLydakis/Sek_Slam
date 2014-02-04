@@ -1,25 +1,14 @@
 
 <launch>
-     <include file="$(find hector_mapping)/launch/mapping_default2.launch">
-    </include>
-    <!--
-    <node pkg="tf" type="static_transform_publisher" name="map_odom" args="0 0 0 0.0 0.0 0.0 /map /odom 40" /> 
-    <node pkg="tf" type="static_transform_publisher" name="odom_base_foot" args="0 0 0 0.0 0.0 0.0 /odom /base_footprint 40" /> 
-    <node pkg="tf" type="static_transform_publisher" name="foot_bf" args="0 0 0 0.0 0.0 0.0 /base_footprint /base_frame 40" /> 
-    <node pkg="tf" type="static_transform_publisher" name="bf_bl" args="0 0 0 0.0 0.0 0.0 /base_frame /base_link 40" /> 
-    <node pkg="tf" type="static_transform_publisher" name="bl_laser" args="0.1 0 0 0.0 0.0 0.0 /base_link /laser 40" /> -->
-	<node pkg="sek_drive" type="drive_base" name="drive_base" output="screen" required="true"/>
+    <include file="$(find hector_mapping)/launch/mapping_default2.launch"/>
+    <node pkg="sek_drive" type="drive_base" name="drive_base" output="screen" required="true"/>
     <!-- <node pkg="sek_drive" type="vel_logger" name="vel_logger" output="screen"/> -->
     <node pkg="tf" type="static_transform_publisher" name="odom_base_foot" args="0 0 0 0.0 0.0 0.0 /odom /base_link 40" /> 
-    <node pkg="tf" type="static_transform_publisher" name="bl_laser" args="0.1 0 0 0.0 0.0 0.0 /base_link /laser 40" />
+    <node pkg="tf" type="static_transform_publisher" name="bl_laser" args="0.30 0.0 0 0.0 0.0 0.0 /base_link /laser 40" />
     <node pkg="joy" type="joy_node" name="joy_node" output="screen"/>
+    
 	<node pkg="hokuyo_node" type="hokuyo_node" name="hokuyo_node"> 
-        <param name="intensity" type="bool" value="true"/>
+        <!--<param name="intensity" type="bool" value="false"/>-->
     </node>
-    <!--
-     <include file="$(find hector_geotiff)/launch/geotiff_mapper.launch">
-        <arg name="trajectory_source_frame_name" value="scanmatcher_frame"/> 
-  </include>
-  -->
-   
+    <node pkg="robot_server" type="robotserverBl.py" name="robot_server" required="true" output="screen"/>
 </launch> 
