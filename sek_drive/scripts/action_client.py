@@ -15,7 +15,7 @@ from math import pow, sqrt
 class RospyActionClient():
     def __init__(self):
         rospy.init_node('rospy_action_lib', anonymous=True)
-        self.TIMEOUT_THRES = 10
+        self.TIMEOUT_THRES_ = 10
         self.threshold_ = 0.3 
         self.rest_time_ = 10
         self.path_received_ = 0
@@ -34,6 +34,7 @@ class RospyActionClient():
         self.amcl_set = 0
         self.single_goal_ = 0
         self.abort_counter_ = 0
+        self.next_goal_sent_ = 0
         goal_states_ = ['PENDING','ACTIVE','PREEMPTED','SUCCEEDED','ABORTED','REJECTED','PREEMPTING','RECALLING','RECALLED','LOST']
         self.move_base_ = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         print("Before wait for server")
@@ -63,7 +64,7 @@ class RospyActionClient():
             elif ((self.path_received_ == 1)and(self.path_length_ > 0)):
                 print("In Second Loop")
                 if self.counter_ == 0 :
-                    print("Sent starting goal")
+                   
                     self.goal_ = MoveBaseGoal()
                     self.goal_.target_pose.pose = self.path_.poses[self.counter_].pose
                     self.goal_.target_pose.header.frame_id = 'map'
@@ -73,37 +74,49 @@ class RospyActionClient():
                     self.goal_pose_.header.frame_id = 'map'
                     self.goal_pose_.header.stamp =  rospy.Time.now()
                     
-                    print("Got new target location")
+                   
+                    #self.pub_.publish(self.goal_pose_)
+                    if self.next_goal_sent_ == 0:
+                        print("Got new target location")
+                        print("Sent starting goal")
+                        self.move_base_.send_goal(self.goal_)
+                        self.next_goal_sent_ = 1
                     
-                    self.pub_.publish(self.goal_pose_)
-                    self.move_base_.send_goal(self.goal_)
-                    
-                    finished_in_time_ = self.move_base_.wait_for_result(rospy.Duration(1))
-                    print("Waiting to reach goal")
-                    if not finished_in_time_: 
+                    state = self.move_base_.get_state()
+                    print state
+                    #print("Waiting to reach goal")
+                    if ((state == GoalStatus.ACTIVE)or(state == GoalStatus.PENDING)): 
                         #self.move_base_.cancel_goal()
+                        rospy.sleep(1)
                         self.abort_counter_ += 1
-                        if self.abort_counter_ == self.TIMEOUT_THRES:
+                        if self.abort_counter_ == self.TIMEOUT_THRES_:
                             print("Timed out")
                             self.path_received_ = 0
                             self.counter_ = 0
-                            self.abort_counter = 0
-                    else:
-                        state = self.move_base_.get_state()
-                        if (state == GoalStatus.SUCCEEDED):
+                            self.abort_counter_ = 0
+                            self.next_goal_sent_ = 0
+                            self.move_base_.cancel_goal()
+                    elif (state == GoalStatus.SUCCEEDED):
                         #if ((state == GoalStatus.SUCCEEDED) or ((self.amcl_set == 1)and((abs(amcl_x_ - single_goal.pose.x) < self.thresold_)
                         #                                        and(abs(amcl_y_ - single_goal.pose.y) < self.thresold_)))):
-                            print("Goal Reaced")
-                            self.counter_ += 1
-                        else:
-                            print("Goal Failed with error code: "+str(goal_states_[state]))
-                            self.path_received_ = 0
-                            self.counter_ = 0
+                        print("Goal Reaced")
+                        self.counter_ += 1
+                        self.abort_counter_ += 1
+                        self.counter_ = 0
+                        self.abort_counter_ = 0
+                    else:
+                        print("Goal Failed with error code: "+str(goal_states_[state]))
+                        self.path_received_ = 0
+                        self.counter_ = 0
+                        self.next_goal_sent_ = 0
+                        self.abort_counter_ = 0
                 else :
-                    if self.counter_ == self.path_length_ -1 :
+                    if self.counter_ == self.path_length :#_ -1 :
                         print("Reached end of path")
                         self.path_received_ = 0
                         self.counter_ = 0
+                        self.next_goal_sent_ = 0
+                        self.abort_counter_ =0
                     else :
                         self.goal_ = MoveBaseGoal()
                         self.goal_.target_pose.pose = self.path_.poses[self.counter_].pose
@@ -117,26 +130,39 @@ class RospyActionClient():
                         print("Got new target location")
                         
                         #self.pub_.publish(self.single_goal_)
-                        self.move_base_.send_goal(self.goal_)
-                        finished_in_time_ = self.move_base_.wait_for_result(rospy.Duration(1))
-                        if not finished_in_time_ : 
-                            self.move_base_.cancel_goal()
-                            print("Timed out")
-                            subprocess.Popen("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &")
-                            self.path_received_ = 0
+                        if self.next_goal_sent_ == 0:
+                            self.move_base_.send_goal(self.goal_)
+                            self.next_goal_sent_ = 1
                             self.counter_ = 0
-                        else:
-                            state = self.move_base_.get_state()
-                            if (state == GoalStatus.SUCCEEDED):
-                            #if ((state == GoalStatus.SUCCEEDED) or ((self.amcl_set == 1)and((abs(amcl_x_ - single_goal.pose.x) < self.thresold_)
-                            #                                   and(abs(amcl_y_ - single_goal.pose.y) < self.thresold_)))):
-                                print("Goal Reaced")
-                                self.counter_ += 1
-                            else:
-                                print("Goal Failed with error code: "+str(goal_states_[state]))
-                                subprocess.Popen("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &")
+                            self.abort_counter_ = 0
+                        
+                        state = self.move_base.get_state()
+                        print state
+                        if ((state == GoalStatus.ACTIVE)or(state == GoalStatus.PENDING)): 
+                        #self.move_base_.cancel_goal()
+                            rospy.sleep(1)
+                            self.abort_counter_ += 1
+                            if self.abort_counter_ == self.TIMEOUT_THRES_:
+                                print("Timed out")
                                 self.path_received_ = 0
                                 self.counter_ = 0
+                                self.abort_counter_ = 0
+                                self.next_goal_sent_ = 0
+                                self.move_base_.cancel_goal()
+                        elif (state == GoalStatus.SUCCEEDED):
+                            #if ((state == GoalStatus.SUCCEEDED) or ((self.amcl_set == 1)and((abs(amcl_x_ - single_goal.pose.x) < self.thresold_)
+                            #                                        and(abs(amcl_y_ - single_goal.pose.y) < self.thresold_)))):
+                            print("Goal Reached")
+                            self.counter_ += 1
+                            self.abort_counter_ = 0
+                            self.counter_ = 0
+                            self.abort_counter_ = 0
+                        else:
+                            print("Goal Failed with error code: "+str(goal_states_[state]))
+                            self.path_received_ = 0
+                            self.counter_ = 0
+                            self.next_goal_sent_ = 0
+                            self.abort_counter_ = 0
             else:
                 print("Default case")
                 rospy.sleep(0.5)
@@ -152,6 +178,7 @@ class RospyActionClient():
             self.path_received_ = 1
             self.single_goal = 0
             self.path_ = data
+            print self.path_
             self.path_length_ = len(data.poses)
         print("Got path of size : " + str(self.path_length_))
         
@@ -189,7 +216,7 @@ class RospyActionClient():
             
     def shutdown(self):
         print("Stopping the robot ...")
-        self.move_base.cancel_goal()
+        self.move_base_.cancel_goal()
         rospy.sleep(2)
         
 if __name__ == '__main__':
