@@ -8,7 +8,14 @@
 #include <math.h>
 #include <sensor_msgs/Joy.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+
+#include "std_msgs/MultiArrayLayout.h"
+#include "std_msgs/MultiArrayDimension.h"
+#include "std_msgs/Int32MultiArray.h"
+
 #include <tf/transform_broadcaster.h>
 #include "robodev.cpp"
 #include <sdc2130_skel/RoboteqDevice.h>
@@ -47,21 +54,24 @@ double max_rot = 4;
 double min_rot = - 4;
 double c__1=2/(max_lin - min_lin);
 double c__2=2/(max_rot - min_rot);
-int LM = 0 ;
-int RM = 0 ;
-int HB = 0 ; //handbrake signal
-int ESD = 0 ; //emergency shutdown signal
-int MODE = 0 ;
-int REC = 0  ;
+int LM = 0;
+int RM = 0;
+int HB = 0; //handbrake signal
+int ESD = 0; //emergency shutdown signal
+int MODE = 0;
+int REC = 0;
+int FIRST_POSE_SET = 0;
 int PLAYING = 0;
 int CAMERA_ON = 0;
+int SCAN_RECORD = 0;
+int ALLIGNING = 0;
 int status;
 string response = "";
 RoboteqDevice device;
 int i ;	
 int ping_ret,p_status;
 int sign = 0;
-int speed ;	
+int speed;	
 int count_ = 0;
 int lenc = 0;
 int renc = 0;
@@ -83,11 +93,45 @@ ofstream file;
 
 unsigned int u;
 FILE *output;
-int result_2 ;
+int result_2;
+
+struct pose_coords
+{
+    float x;
+    float y;
+    float w;
+};
+
+struct pose_coords first_pose;
+std::vector<pose_coords> pose_vector;
+std::vector<pose_coords> pose_vector_to_use;
+nav_msgs::Path path_to_send;
+
 
 float scaleRange(double in, double oldMin, double oldMax, double newMin, double newMax)
 {
     return (in / ((oldMax - oldMin) / (newMax - newMin))) + newMin;
+}
+
+void recManCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
+{
+    
+    if (REC == 1)
+    {   
+        if (FIRST_POSE_SET == 0)
+        {
+            first_pose.x = msg->pose.pose.position.x;
+            first_pose.y = msg->pose.pose.position.y;
+            //pose.z = msg->pose.orientation.z;
+            first_pose.w = msg->pose.pose.orientation.w;
+            FIRST_POSE_SET = 1;
+        }
+        struct pose_coords pose ;
+        pose.x = msg->pose.pose.position.x - first_pose.x;
+        pose.y = msg->pose.pose.position.y - first_pose.y;
+        pose.w = msg->pose.pose.orientation.w - first_pose.w;
+        pose_vector.push_back(pose);
+    }
 }
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
@@ -221,10 +265,27 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 		device.SetCommand(_GO,1, 0);// RIGHT
 		device.SetCommand(_GO,2, 0);//LEFT
         
-		if(msg->buttons[0]==1)
+		if((msg->buttons[11])==1)//&&(msg->buttons[9]!=1))
 		{	
-            //system("mplayer -really-quiet /home/skel/horn.mp3 &");
-            //ros::Duration(2).sleep();
+            if (SCAN_RECORD==0)
+            {
+                system("roslaunch sek_drive record.launch &");
+                ros::Duration(3).sleep();
+                system("/home/skel/start");;
+                SCAN_RECORD = 1;
+            }
+            else
+            {
+                system("rosnode kill /laser_scan/record_1  &");
+                system("rosnode kill /laser_scan/record_2  &");
+                system("rosnode kill /laser_scan/record_3  &");	
+                system("rosnode kill /laser_scan/record_4  &");
+                system("/home/skel/stop");;
+                ros::Duration(3).sleep();
+                system("rosnode kill /laser_scan/img_record  &");
+                SCAN_RECORD = 0;
+            }
+            ros::Duration(2).sleep();
             //system("killall -9 mplayer");
 		}
         if(msg->buttons[1]==1)
@@ -264,8 +325,8 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             {
                 REC=1; 
                 ROS_INFO("Start Recording");
-                system("roslaunch sek_drive record.launch &");
-                ros::Duration(3).sleep();
+                //system("roslaunch sek_drive record.launch &");
+                //ros::Duration(3).sleep();
             }
             
         }
@@ -275,18 +336,29 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             {
                 REC=0;
                 ROS_INFO("Stop Recording");
-                system("rosnode kill /maneuvers/record_man &");
-                ros::Duration(3).sleep();
-                system("/home/skel/cleanup.sh &");
+                pose_vector_to_use =  pose_vector;
+                pose_vector.clear();
+                FIRST_POSE_SET = 0;
+                //system("rosnode kill /maneuvers/record_man &");
+                //ros::Duration(3).sleep();
+                //system("/home/skel/cleanup.sh &");
             } 
         }
         if(msg->buttons[4]==1)//START PLAYING //L2
         {
-            if(PLAYING==0)
+            if((PLAYING==0)&&(REC==0))
             {
                 PLAYING=1;
+                geometry_msgs::PoseStamped pose_to_add;
                 ROS_INFO("Playing Maneuver");
-                system("rosbag play /home/skel/.ros/maneuver.bag &");
+                //system("rosbag play /home/skel/.ros/maneuver.bag &");
+                for(unsigned i = 0; i < pose_vector.size(); i++)
+                {
+                    pose_to_add.pose.position.x = pose_vector[i].x;
+                    pose_to_add.pose.position.y = pose_vector[i].y;
+                    pose_to_add.pose.orientation.w = pose_vector[i].w;
+                    path_to_send.poses.push_back(pose_to_add);
+                }
             }
         }
         if(msg->buttons[5]==1)//STOP PLAYING //R2
@@ -295,8 +367,9 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             {
                 PLAYING=0;
                 ROS_INFO("Stopping Maneuver");
-                system("killall -9 play");
-                system("/home/skel/cleanup.sh &");
+                //system("killall -9 play");
+                //system("/home/skel/cleanup.sh &");
+                
             }
         }
 		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
@@ -339,8 +412,8 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         if((msg->buttons[9]==1)&&(msg->buttons[8]==0))//START
 		{
 			ROS_INFO("Giving Start Signal");
-			system("/home/skel/start");
-			return;
+			//system("/home/skel/start");
+			//return;
 		}
 	}
     //cout<<"RENC : "<<renc<<endl;
@@ -355,206 +428,216 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg2)
     linx = msg2->linear.x*0.250000;
     angz = msg2->angular.z*0.250000;
     
-        if(linx==0 && angz ==0)
+    if(linx==0 && angz ==0)
+    {
+        device.SetCommand(_GO,1, 0);// RIGHT
+        device.SetCommand(_GO,2, 0);//LEFT
+        return;
+    }
+    else
+    {
+        if ((abs(linx)<0.2)&&(abs(linx)>0))
         {
-            device.SetCommand(_GO,1, 0);// RIGHT
-            device.SetCommand(_GO,2, 0);//LEFT
-            return;
+            linx = (linx/(abs(linx)))*0.2;
         }
-        //ROS_INFO("LINX #2 : %f",linx);
-        //ROS_INFO("ANGZ #2 : %f",angz);
-        if(linx==0)//akinito oxhma
+        if ((abs(angz) <0.2)&&(abs(angz)>0))
         {
-            if(angz!=0)//epitopia peristrofi
+            angz = (angz/(abs(angz)))*0.2;
+        }
+    }
+    //ROS_INFO("LINX #2 : %f",linx);
+    //ROS_INFO("ANGZ #2 : %f",angz);
+    if(linx==0)//akinito oxhma
+    {
+        if(angz!=0)//epitopia peristrofi
+        {
+            RM = -MAX_SPEED*angz;
+            LM = -MAX_SPEED*angz;
+            if(abs(RM)<(0.2*MAX_SPEED))
             {
-                RM = -MAX_SPEED*angz;
-                LM = -MAX_SPEED*angz;
-                if(abs(RM)<(0.2*MAX_SPEED))
+                RM = (RM/(abs(RM)))*(0.2*MAX_SPEED);
+                LM = (LM/(abs(LM)))*(0.2*MAX_SPEED);
+            }
+        }
+    }
+    else
+    {   
+        RM = -MAX_SPEED*linx;
+        LM = MAX_SPEED*linx;
+        if(linx>0)//kinisi mprosta
+        {   
+            if(angz>0)//strofi aristera
+            {
+                ROS_INFO("STROFI MPROSTA ARISTERA");
+                if(angz>0.8)//apotomi strofi
                 {
-                    RM = (RM/(abs(RM)))*(0.2*MAX_SPEED);
-                    LM = (LM/(abs(LM)))*(0.2*MAX_SPEED);
+                    ROS_INFO("APOTOMA");
+                    RM = RM*1.8;
+                    if (RM<MAX_SPEED)
+                    {
+                        RM=-MAX_SPEED;
+                    }
+                    LM = LM*angz;
+                    if (LM<(0.2*(MAX_SPEED)))
+                    {
+                        LM=0.2*(MAX_SPEED);
+                    }
+                }
+                else
+                {
+                    ROS_INFO("NORMAL");
+                    RM = RM + RM*angz;
+                    if (RM<(-MAX_SPEED))
+                    {
+                        RM=-MAX_SPEED;
+                    }
+                    LM = LM - LM*angz;
+                    if (LM<(0.2*(MAX_SPEED)))
+                    {
+                        LM=0.2*(MAX_SPEED);
+                    }
+                }
+        }
+        else if (angz<0)//strofi de3ia
+        {
+            ROS_INFO("STROFI MPROSTA DE3IA");
+            if(angz<(-0.8))//apotomi strofi
+            {
+                ROS_INFO("APOTOMA");
+                LM = LM*1.8;
+                if (LM>MAX_SPEED)
+                {
+                    LM=MAX_SPEED;
+                }
+                //RM<0
+                //msg-axes[0] <0
+                RM = RM - RM*angz;
+                if (RM<(-0.2*(MAX_SPEED)))
+                {
+                    RM=-0.2*(MAX_SPEED);
+                }
+            }
+            else
+            {   
+                ROS_INFO("NORMAL");
+                LM = - LM*angz;
+                if (LM<(0.2*MAX_SPEED))
+                {
+                    LM=0.2*MAX_SPEED;
+                }
+                RM = RM + RM*angz;
+                if (RM<(-0.2*(MAX_SPEED)))
+                {
+                    RM=-0.2*(MAX_SPEED);
                 }
             }
         }
-        else
-        {   
-            RM = -MAX_SPEED*linx;
-            LM = MAX_SPEED*linx;
-            if(linx>0)//kinisi mprosta
-            {   
-                if(angz>0)//strofi aristera
-                {
-                    //ROS_INFO("STROFI MPROSTA ARISTERA");
-                    if(angz>0.8)//apotomi strofi
-                    {
-                        //ROS_INFO("APOTOMA");
-                        RM = RM*1.8;
-                        if (RM<MAX_SPEED)
-                        {
-                            RM=-MAX_SPEED;
-                        }
-                        LM = LM - LM*angz;
-                        if (LM<(0.2*(MAX_SPEED)))
-                        {
-                            LM=0.2*(MAX_SPEED);
-                        }
-                    }
-                    else
-                    {
-                    //ROS_INFO("NORMAL");
-                        RM = RM + RM*angz;
-                        if (RM<(-MAX_SPEED))
-                        {
-                            RM=-MAX_SPEED;
-                        }
-                        LM = LM - LM*angz;
-                        if (LM<(0.2*(MAX_SPEED)))
-                        {
-                            LM=0.2*(MAX_SPEED);
-                        }
-                    }
-                }
-                else if (angz<0)//strofi de3ia
-                {
-                //ROS_INFO("STROFI MPROSTA DE3IA");
-                    if(angz<(-0.8))//apotomi strofi
-                    {
-                        //ROS_INFO("APOTOMA");
-                        LM = LM*1.8;
-                        if (LM>MAX_SPEED)
-                        {
-                            LM=MAX_SPEED;
-                        }
-                        //RM<0
-                        //msg-axes[0] <0
-                        RM = RM - RM*angz;
-                        if (RM<(-0.2*(MAX_SPEED)))
-                        {
-                            RM=-0.2*(MAX_SPEED);
-                        }
-                    }
-                    else
-                    {   
-                    //ROS_INFO("NORMAL");
-                        LM = - LM*angz;
-                        if (LM>MAX_SPEED)
-                            {
-                                LM=MAX_SPEED;
-                            }
-                        RM = RM + RM*angz;
-                        if (RM<(-0.2*(MAX_SPEED)))
-                        {
-                            RM=-0.2*(MAX_SPEED);
-                        }
-                    }
-                }
-                else //kamia strofi
-                {
-                    if(LM<(0.2*MAX_SPEED))
-                    {
-                        LM=0.2*MAX_SPEED;
-                        RM=-0.2*MAX_SPEED;
-                    } 
-                }
-            }
-            else if (linx<0)//kinisi pisw
-            {   
-                RM = -MAX_SPEED*linx; //>0
-                LM = MAX_SPEED*linx; //<0
-                    if(angz>0)//strofi aristera
-                    {
-                    //ROS_INFO("STROFI PISW ARISTERA");
-                    if(angz>0.8)//apotomi strofi
-                    {
-                        //axes[0]>0
-                        //RM >0
-                        //theloyme na ay3h8ei to RM
-                        //ROS_INFO("APOTOMA");
-                        RM = RM*1.8;
-                        if (RM>MAX_SPEED)
-                        {
-                            RM=MAX_SPEED;
-                        }
-                        //LM <0
-                        //angz > 0
-                        //theloyme na meiw8ei to LM
-                        LM = LM - LM*angz;
-                        if (LM>(-0.2*(MAX_SPEED)))
-                        {
-                            LM=-0.2*(MAX_SPEED);
-                        }
-                    }
-                    else
-                    {
+        else //kamia strofi
+        {
+            if(LM<(0.2*MAX_SPEED))
+            {
+                LM=0.2*MAX_SPEED;
+                RM=-0.2*MAX_SPEED;
+            } 
+        }
+    }
+    else if (linx<0)//kinisi pisw
+    {   
+        RM = -MAX_SPEED*linx; //>0
+        LM = MAX_SPEED*linx; //<0
+        if(angz>0)//strofi aristera
+        {
+            ROS_INFO("STROFI PISW ARISTERA");
+            if(angz>0.8)//apotomi strofi
+            {
                 //axes[0]>0
                 //RM >0
                 //theloyme na ay3h8ei to RM
-                //ROS_INFO("NORMAL");
-                    RM = RM + RM*angz;
-                    if (RM>MAX_SPEED)
-                        {
-                            RM=MAX_SPEED;
-                        }
-                        //LM <0
-                        //angz > 0
-                        //theloyme na meiw8ei to LM
-                        LM = LM - LM*angz;
-                        if (LM>(-0.2*(MAX_SPEED)))
-                        {
-                            LM=-0.2*(MAX_SPEED);
-                        }
-                    }
-                }
-                else if (angz<0)//strofi de3ia
+                ROS_INFO("APOTOMA");
+                RM = RM*1.8;
+                if (RM>MAX_SPEED)
                 {
-                    //ROS_INFO("STROFI PISW DE3IA");
-                    //RM > 0 8eloyme na meiw8ei
-                    //LM < 0 8eloyme na af3i8ei
-                    //angz < 0
-                    if(angz<(-0.8))//apotomi strofi
-                    {
-                        //ROS_INFO("APOTOMA");
-                        LM = LM*1.8;
-                        if (LM<-(MAX_SPEED))
-                        {
-                            LM=-MAX_SPEED;
-                        }
-                        RM = RM + RM*angz;
-                        if (RM<(0.2*(MAX_SPEED)))
-                        {
-                            RM=0.2*(MAX_SPEED);
-                        }
-                    }
-                    else
-                    {   
-                        //ROS_INFO("NORMAL");
-                        LM = LM - LM*angz;
-                        if (LM<-(MAX_SPEED))
-                        {
-                            LM=-MAX_SPEED;
-                        }
-                        RM = RM + RM*angz;
-                        if (RM<(0.2*(MAX_SPEED)))
-                        {
-                            RM=0.2*(MAX_SPEED);
-                        }
-                    }
+                    RM=MAX_SPEED;
                 }
-                else //kamia strofi
+                //LM <0
+                //angz > 0
+                //theloyme na meiw8ei to LM
+                LM = LM + LM*angz;
+                if (LM>(-0.2*(MAX_SPEED)))
                 {
-                    if(RM<(0.2*MAX_SPEED))
-                    {
-                        RM=0.2*MAX_SPEED;
-                        LM=-0.2*MAX_SPEED;
-                    } 
+                    LM=-0.2*(MAX_SPEED);
+                }
+            }
+            else
+            {
+                //axes[0]>0
+                //RM >0
+                //theloyme na ay3h8ei to RM
+                ROS_INFO("NORMAL");
+                RM = RM + RM*angz;
+                if (RM>MAX_SPEED)
+                {
+                    RM=MAX_SPEED;
+                }
+                //LM <0
+                //angz > 0
+                //theloyme na meiw8ei to LM
+                LM = LM - LM*angz;
+                if (LM>(-0.2*(MAX_SPEED)))
+                {
+                    LM=-0.2*(MAX_SPEED);
                 }
             }
         }
-        device.SetCommand(_GO,1, RM);// RIGHT
-        device.SetCommand(_GO,2, LM);//LEFT
-        cout<<"LEFT MOTOR :"<< LM<<endl;
-        cout<<"RIGHT MOTOR :"<<RM<<endl;
-    //}
+        else if (angz<0)//strofi de3ia
+        {
+            ROS_INFO("STROFI PISW DE3IA");
+            //RM > 0 8eloyme na meiw8ei
+            //LM < 0 8eloyme na af3i8ei
+            //angz < 0
+            if(angz<(-0.8))//apotomi strofi
+            {
+                ROS_INFO("APOTOMA");
+                LM = LM*1.8;
+                if (LM<-(MAX_SPEED))
+                {
+                    LM=-MAX_SPEED;
+                }
+                RM = RM + RM*angz;
+                if (RM<(0.2*(MAX_SPEED)))
+                {
+                    RM=0.2*(MAX_SPEED);
+                }
+            }
+            else
+            {   
+                ROS_INFO("NORMAL");
+                LM = LM - LM*angz;
+                if (LM<-(MAX_SPEED))
+                {
+                    LM=-MAX_SPEED;
+                }
+                RM = RM + RM*angz;
+                if (RM<(0.2*(MAX_SPEED)))
+                {
+                    RM=0.2*(MAX_SPEED);
+                }
+            }
+        }
+        else //kamia strofi
+        {
+            if(RM<(0.2*MAX_SPEED))
+            {
+                RM=0.2*MAX_SPEED;
+                LM=-0.2*MAX_SPEED;
+            } 
+        }
+    }
+}
+device.SetCommand(_GO,1, RM);// RIGHT
+device.SetCommand(_GO,2, LM);//LEFT
+cout<<"LEFT MOTOR :"<< LM<<endl;
+cout<<"RIGHT MOTOR :"<<RM<<endl;
 }
 
 void calcOdom()
@@ -571,6 +654,20 @@ void calcOdom()
 		}
     ROS_INFO("ODOM LENC : %d",lenc);
     ROS_INFO("ODOM RENC : %d",lenc);
+}
+
+void alignCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
+{
+    std::vector<int>::const_iterator it = array->data.begin();
+    RM = *it;
+    it++;
+    LM = *it;
+    device.SetCommand(_GO,1, RM);// RIGHT
+    device.SetCommand(_GO,2, LM);//LEFT
+    cout<<"ALLIGNING WITH AR MARKER"<<endl;
+    cout<<"LEFT MOTOR :"<< LM<<endl;
+    cout<<"RIGHT MOTOR :"<<RM<<endl;
+    return;
 }
 
 int main(int argc, char *argv[])
@@ -591,6 +688,9 @@ int main(int argc, char *argv[])
 	ros::Duration(0.1).sleep();
 	ros::Subscriber sub = n.subscribe("joy", 1, teleopCallback);
 	ros::Subscriber sub2 = n.subscribe("cmd_vel", 1, cmdVelCallback);
+    //ros::Subscriber sub3 =  n.subscribe("amcl_pose", 1, recManCallback);
+    ros::Subscriber sub3 = n.subscribe("align", 1, alignCallback);
+    ros::Publisher pub1 = n.advertise<nav_msgs::Path>("sent_path", 50);
 	//ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
 	tf::TransformBroadcaster odom_broadcaster;
 	
@@ -617,6 +717,11 @@ int main(int argc, char *argv[])
 while (ros::ok())
     {	
 		ros::spinOnce();
+        if (PLAYING==1)
+        {
+            pub1.publish(path_to_send);
+            PLAYING = 0;
+        }
         
      }   
 	device.Disconnect();
