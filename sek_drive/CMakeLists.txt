@@ -11,8 +11,15 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   nav_msgs
   tf
+  image_transport
+  image_geometry
+  cv_bridge
+  message_generation
+  genmsg
+  catkin REQUIRED genmsg actionlib_msgs
 )
-
+#add_action_files(DIRECTORY action FILES DoDishes.action)
+#generate_messages(DEPENDENCIES actionlib_msgs)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -25,14 +32,16 @@ find_package(catkin REQUIRED COMPONENTS
 #######################################
 ## Declare ROS messages and services ##
 #######################################
-
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
 #   Message1.msg
 #   Message2.msg
 # )
-
+add_message_files(
+    FILES
+    ARMarker.msg
+)
 ## Generate services in the 'srv' folder
 # add_service_files(
 #   FILES
@@ -45,7 +54,11 @@ find_package(catkin REQUIRED COMPONENTS
 #   DEPENDENCIES
 #   sensor_msgs#   std_msgs
 # )
-
+generate_messages(
+    DEPENDENCIES
+    std_msgs
+    geometry_msgs
+)
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -56,7 +69,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+#  INCLUDE_DIRS -std=gnu++0x
 #  LIBRARIES sek_drive
 #  CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
@@ -95,16 +108,54 @@ target_link_libraries(vel_logger
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
 )
-add_executable(path_sender src/path_sender.cpp)
-target_link_libraries(path_sender
-  ${catkin_LIBRARIES}
-  #${Boost_LIBRARIES}
-)
+
 
 add_executable(init_pose src/init_pose.cpp)
 target_link_libraries(init_pose
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
+)
+
+add_executable(record_hok_odom src/record_hok_odom.cpp)
+set_target_properties(record_hok_odom PROPERTIES COMPILE_FLAGS  -std=gnu++0x)
+target_link_libraries(record_hok_odom
+  ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+)
+
+add_executable(stream_merge src/stream_merge.cpp)
+set_target_properties(stream_merge PROPERTIES COMPILE_FLAGS  -std=gnu++0x)
+target_link_libraries(stream_merge
+  ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+)
+
+add_executable(face_detection src/face_detection.cpp)
+set_target_properties(face_detection PROPERTIES COMPILE_FLAGS -std=gnu++0x)
+target_link_libraries(face_detection
+    ${catkin_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
+
+add_executable(hand_rec src/hand_rec.cpp)
+set_target_properties(hand_rec PROPERTIES COMPILE_FLAGS -std=gnu++0x)
+target_link_libraries(hand_rec
+    ${catkin_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
+
+add_executable(marker_detection src/marker_detection.cpp)
+set_target_properties(marker_detection PROPERTIES COMPILE_FLAGS -std=gnu++0x)
+target_link_libraries(marker_detection
+    ${catkin_LIBRARIES}
+    ${Boost_LIBRARIES}
+)
+
+add_executable(align src/align.cpp)
+set_target_properties(align PROPERTIES COMPILE_FLAGS -std=gnu++0x)
+target_link_libraries(align
+    ${catkin_LIBRARIES}
+    ${Boost_LIBRARIES}
 )
 #add_executable(robodev src/robodev.cpp)
 #add_executable(RoboteqDevice src/RoboteqDevice.cpp)
