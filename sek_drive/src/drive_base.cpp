@@ -138,35 +138,35 @@ void recManCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& ms
 }
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
-{	
+{   
     if(MODE == 1)
     {
         return ;
     } 
-	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
-	{
+    if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
+    {
         cout<<"if"<<endl;
-		//ROS_INFO("HEAR HEAR");
-		if(msg->axes[6]==1)//MPROS-PISW
-		{
-			RM = -MAX_SPEED;
-			LM = MAX_SPEED;
+        //ROS_INFO("HEAR HEAR");
+        if(msg->axes[6]==1)//MPROS-PISW
+        {
+            RM = -MAX_SPEED;
+            LM = MAX_SPEED;
             //gyro_speed = LM ;
-		}
-		else if(msg->axes[6]==-1)
-		{
-			RM = MAX_SPEED;
-			LM = -MAX_SPEED;
+        }
+        else if(msg->axes[6]==-1)
+        {
+            RM = MAX_SPEED;
+            LM = -MAX_SPEED;
             //gyro_speed = LM ;
             //system("mplayer -really-quiet /home/skel/beep2.mp3&");
             
-		}
-		else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
-		{
-			RM = -MAX_SPEED*msg->axes[5];
-			LM = -MAX_SPEED*msg->axes[5];
-		}
-		else if((msg->axes[0]!=0)||(msg->axes[1]!=0))
+        }
+        else if(msg->axes[5]!=0)//DEKSIA-ARISTERA
+        {
+            RM = -MAX_SPEED*msg->axes[5];
+            LM = -MAX_SPEED*msg->axes[5];
+        }
+        else if((msg->axes[0]!=0)||(msg->axes[1]!=0))
         {
             if(msg->axes[1]==0)//akinito oxhma
             {
@@ -252,27 +252,27 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         cout<<"RIGHT MOTOR :"<<RM<<endl;
         //calcOdom();
         if(msg->buttons[0]==1)
-		{	
+        {
             //system("mplayer -really-quiet /home/skel/horn.mp3 &");
             //ros::Duration(2).sleep();
             //system("killall -9 mplayer");
-		}
+        }
         if(msg->buttons[3]==1)
         {
             ROS_INFO("SAVING MAP as \"mymap\"");
             system("rosrun map_server map_saver -f mymap &");
         }
     }
-	
-	else 
-	{
+    
+    else 
+    {
         cout<<"else"<<endl;
         //system("killall -9 mplayer");
-		device.SetCommand(_GO,1, 0);// RIGHT
-		device.SetCommand(_GO,2, 0);//LEFT
+        device.SetCommand(_GO,1, 0);// RIGHT
+        device.SetCommand(_GO,2, 0);//LEFT
         
-		if((msg->buttons[11])==1)//&&(msg->buttons[9]!=1))
-		{	
+        if((msg->buttons[11])==1)//&&(msg->buttons[9]!=1))
+        {
             if (SCAN_RECORD==0)
             {
                 system("roslaunch sek_drive record.launch &");
@@ -293,7 +293,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             }
             ros::Duration(2).sleep();
             //system("killall -9 mplayer");
-		}
+        }
         if(msg->buttons[1]==1)
         {
             system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
@@ -378,59 +378,58 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
                 
             }
         }
-		if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
-		{	
+        if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
+        {   
             ROS_INFO("Restarting Python Server");
             system("rosrun robot_server robotserverBl.py &");
         }
-		else if (msg->buttons[10]==1)
-		{
+        else if (msg->buttons[10]==1)
+        {
             
-		}
-		else if (msg->buttons[11]==1)
-		{
+        }
+        else if (msg->buttons[11]==1)
+        {
 
-		}
-		else if((msg->buttons[8]==1)&&(msg->buttons[9]==1))//SELECT & START
-		{
-			printf("Emergency Shutdown\n");			
-			if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
-			{
-				cout<<"failed --> \n"<<status<<endl;
-			}	
-			else 
-			{
-			}
-			ros::Duration(0.01).sleep(); 
-			if((status = device.SetCommand(_GO, 1,- 0)) != RQ_SUCCESS)
-			{
-				cout<<"failed --> \n"<<status<<endl;
-				device.Disconnect();
+        }
+        else if((msg->buttons[8]==1)&&(msg->buttons[9]==1))//SELECT & START
+        {
+            printf("Emergency Shutdown\n");			
+            if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
+            {
+                cout<<"failed --> \n"<<status<<endl;
+            }
+            else 
+            {
+            }
+            ros::Duration(0.01).sleep(); 
+            if((status = device.SetCommand(_GO, 1,- 0)) != RQ_SUCCESS)
+            {
+                cout<<"failed --> \n"<<status<<endl;
+                device.Disconnect();
                 system("/home/skel/cleanup.sh &");
                 ros::shutdown();
-			}	
-			else
-			{
-			}
-			ROS_INFO("SHUTTING DOWN");
-			ros::shutdown();
-		}
+            }
+            else
+            {
+            }
+            ROS_INFO("SHUTTING DOWN");
+            ros::shutdown();
+        }
         if((msg->buttons[9]==1)&&(msg->buttons[8]==0))//START
-		{
-			ROS_INFO("Giving Start Signal");
-			//system("/home/skel/start");
-			//return;
-		}
-	}
+        {
+            ROS_INFO("Giving Start Signal");
+            //system("/home/skel/start");
+            //return;
+        }
+    }
     //cout<<"RENC : "<<renc<<endl;
     //cout<<"LENC : "<<lenc<<endl;
     cout<<"LEFT MOTOR :"<< LM<<endl;
     cout<<"RIGHT MOTOR :"<<RM<<endl;
-	
 }
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg2)
-{	
+{
     linx = msg2->linear.x*0.250000;
     angz = msg2->angular.z*0.250000;
     
@@ -649,15 +648,15 @@ cout<<"RIGHT MOTOR :"<<RM<<endl;
 void calcOdom()
 {   
      if((device.GetValue(_S, 1, lenc)!=RQ_SUCCESS)||(device.GetValue(_S, 2, renc)!=RQ_SUCCESS))
-		{
-			ROS_INFO("Encoder data decoding failed\n");
-            return;
-		}  
-	if(device.GetValue(_S, 2, renc)!=RQ_SUCCESS)
-		{
-            ROS_INFO("Encoder data decoding failed\n");
-            return;
-		}
+    {
+        ROS_INFO("Encoder data decoding failed\n");
+        return;
+    }  
+    if(device.GetValue(_S, 2, renc)!=RQ_SUCCESS)
+    {
+        ROS_INFO("Encoder data decoding failed\n");
+        return;
+    }
     ROS_INFO("ODOM LENC : %d",lenc);
     ROS_INFO("ODOM RENC : %d",lenc);
 }
@@ -677,30 +676,30 @@ void alignCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
 }
 
 int main(int argc, char *argv[])
-{	
-	int status = device.Connect("/dev/ttyACM1");
-	if(status != RQ_SUCCESS)
-	{
-		cout<<"Error connecting to device: "<<status<<"."<<endl;
-		return 1;
-	}
+{   
+    int status = device.Connect("/dev/ttyACM1");
+    if(status != RQ_SUCCESS)
+    {
+        cout<<"Error connecting to device: "<<status<<"."<<endl;
+        return 1;
+    }
 
-	device.SetConfig(_RWD, 1, -1);
-	device.SetConfig(_RWD, 2, -1);
-	
-	ros::init(argc, argv, "move_script");
+    device.SetConfig(_RWD, 1, -1);
+    device.SetConfig(_RWD, 2, -1);
+    
+    ros::init(argc, argv, "move_script");
 
-	ros::NodeHandle n;
-	ros::Duration(0.1).sleep();
-	ros::Subscriber sub = n.subscribe("joy", 1, teleopCallback);
-	ros::Subscriber sub2 = n.subscribe("cmd_vel", 1, cmdVelCallback);
+    ros::NodeHandle n;
+    ros::Duration(0.1).sleep();
+    ros::Subscriber sub = n.subscribe("joy", 1, teleopCallback);
+    ros::Subscriber sub2 = n.subscribe("cmd_vel", 1, cmdVelCallback);
     //ros::Subscriber sub3 =  n.subscribe("amcl_pose", 1, recManCallback);
-    ros::Subscriber sub3 = n.subscribe("align", 1, alignCallback);
+    ros::Subscriber sub3 = n.subscribe("motor_commands", 1, alignCallback);
     ros::Publisher pub1 = n.advertise<nav_msgs::Path>("sent_path", 50);
-	//ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
-	tf::TransformBroadcaster odom_broadcaster;
-	
-	ROS_INFO("- SetConfig(_DINA, 1, 1)...");
+    //ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
+    tf::TransformBroadcaster odom_broadcaster;
+    
+    ROS_INFO("- SetConfig(_DINA, 1, 1)...");
     if((status = device.SetConfig(_DINA, 1, 1)) != RQ_SUCCESS)
       cout<<"failed --> "<<status<<endl;
     else
@@ -717,36 +716,11 @@ int main(int argc, char *argv[])
     ROS_INFO("Roboteq -- Successfull setup of the Roboteq SDC2130");
     printf ("Sek Operational\n\n");
     ros::Duration(0.01).sleep(); //sleep for 10 ms
-
-    if (ros::param::has("con_mode"))
-        {
-            if (ros::param::get("con_mode", MODE))
-            {
-                if (MODE == 1)
-                {
-                    cout<<"3SPOOKYSPOOPY5ME"<<endl;
-                    ROS_INFO("3SPOOKYSPOOPY5ME");
-                }
-                else
-                {
-                    ROS_INFO("param != 1");
-                }
-            }
-            else
-            {
-                ROS_INFO("could not get param");
-            }
-        }
-        else
-        {
-            ROS_INFO("no param named con_mode");
-        }
-        
-	//current_time = ros::Time::now();
-	last_time = ros::Time::now();
+    //current_time = ros::Time::now();
+    last_time = ros::Time::now();
     while (ros::ok())
-    {	
-		ros::spinOnce();
+    {   
+        ros::spinOnce();
         if (n.hasParam("sek_drive/con_mode"))
         {
             if (n.getParam("sek_drive/con_mode", MODE))
@@ -777,7 +751,7 @@ int main(int argc, char *argv[])
         }
         
      }   
-	device.Disconnect();
-	return 0;
+    device.Disconnect();
+    return 0;
 }
 
