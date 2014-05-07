@@ -19,8 +19,17 @@
     
     <node pkg="hokuyo_node" type="hokuyo_node" name="hokuyo_node">
         <param name="intensity" type="bool" value="false"/>
-    </node>
-
+    <!--
+    <node pkg="hokuyo_node" type="hokuyo_node" name="hokuyo_node"> 
+        <param name = "intensity" type="bool" value="false"/> -->
+        <!--
+        <param name = "skip" value = "0" />
+        <param name = "min_ang" value = "-0.785"/>
+        <param name = "max_ang" value = "0.785"/>
+        -->
+   </node> 
+    
+    <node pkg="kinect_aux" type="kinect_aux_node" name="camera_tilt" respawn="true"/>
   <!--- Run AMCL -->
     <include file="/home/skel/navigation/amcl/examples/amcl_diff.launch" />
     
@@ -32,8 +41,36 @@
         <rosparam file="$(find sek_drive)/launch/base_local_planner_params.yaml" command="load" />
     </node>
     <node pkg="joy" type="joy_node" name="joy_node"/>
-  <node pkg="sek_drive" type="drive_base" required="true" name="sek_drive" output="screen"/>
-  <node pkg="sek_drive" type="init_pose" required="true" name="init_pose"/>
-  <!-- <node pkg="robot_server" type="mapInfo.py" required="true" name="mapInfo"/> -->
+  <node pkg="sek_drive" type="drive_base" required="true" name="sek_drive" output="screen">
+    <param name="con_mode" value = "2"/>
+    </node>
+  <node pkg="sek_drive" type="stream_merge" required="true" name="stream_merge" output="screen"/>
+  <node pkg="sek_drive" type="action_client.py" required ="true" name="action_client" output="screen" />
+  <node pkg="servo_mast" type="servo_mast" required ="true" name="mast_control" output="screen" />
+  <!--<node pkg="sek_drive" type="init_pose" required="true" name="init_pose"/>-->
+  <!-- <node pkg="sek_drive" type="path_sender" required="true" name="path_sender"/>
+  <node pkg="robot_server" type="mapInfo.py" required="true" name="mapInfo"/> -->
   <node pkg="robot_server" type="robotserverBl.py" name="robot_server" required="true" output="screen"/>
+  
+  
+  <!-- AR PATTERN RECOGNITION SEGMENT -->
+  <!--
+  <arg name="kinect" default="true"/>
+  <param name="use_sim_time" value="false"/>
+    
+    <node pkg="tf" type="static_transform_publisher" name="world_to_cam" 
+     args="0.1 21.75 33.5 0 0 0 /base_link /camera_rgb_optical_frame 10" />
+
+    <node name="ar_pose" pkg="ar_pose" type="ar_single" respawn="false" output="screen">
+        <param name="marker_pattern" type="string" value="data/coffee/coffee_1.patt"/>
+        <param name="marker_width" type="double" value="80.0"/>
+        <param name="marker_center_x" type="double" value="0.0"/>
+        <param name="marker_center_y" type="double" value="0.0"/>
+        <param name="threshold" type="int" value="100"/>
+        <param name="use_history" type="bool" value="true"/>
+        <remap from="/usb_cam/image_raw"   to="/camera/rgb/image_raw"/>
+        <remap from="/usb_cam/camera_info" to="/camera/rgb/camera_info"/>
+    </node>
+    -->
+  <!-- /AR PATTERN RECOGNITION SEGMENT -->
 </launch>
