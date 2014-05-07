@@ -27,6 +27,8 @@
 #include <sys/wait.h>
 #include <cmath> 
 
+//#include <boost/thread.hpp>
+
 using namespace std;
 
 #define PI 3.14159265358979323846264338
@@ -48,6 +50,7 @@ double max_ang_vle = max_lin_vel/(WHEEL_BASE_WIDTH/2);//0.14363361612212534686
 int six = 0;
 int gyro_speed = 0;
 */
+
 double max_lin = 2;
 double min_lin = -2;
 double max_rot = 4;
@@ -58,7 +61,7 @@ int LM = 0;
 int RM = 0;
 int HB = 0; //handbrake signal
 int ESD = 0; //emergency shutdown signal
-int MODE = 0;
+int MODE = 0; //Assistive or nope
 int REC = 0;
 int FIRST_POSE_SET = 0;
 int PLAYING = 0;
@@ -136,7 +139,10 @@ void recManCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& ms
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {	
-   
+    if(MODE == 1)
+    {
+        return ;
+    } 
 	if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
 	{
         cout<<"if"<<endl;
@@ -712,11 +718,58 @@ int main(int argc, char *argv[])
     printf ("Sek Operational\n\n");
     ros::Duration(0.01).sleep(); //sleep for 10 ms
 
+    if (ros::param::has("con_mode"))
+        {
+            if (ros::param::get("con_mode", MODE))
+            {
+                if (MODE == 1)
+                {
+                    cout<<"3SPOOKYSPOOPY5ME"<<endl;
+                    ROS_INFO("3SPOOKYSPOOPY5ME");
+                }
+                else
+                {
+                    ROS_INFO("param != 1");
+                }
+            }
+            else
+            {
+                ROS_INFO("could not get param");
+            }
+        }
+        else
+        {
+            ROS_INFO("no param named con_mode");
+        }
+        
 	//current_time = ros::Time::now();
 	last_time = ros::Time::now();
-while (ros::ok())
+    while (ros::ok())
     {	
 		ros::spinOnce();
+        if (n.hasParam("sek_drive/con_mode"))
+        {
+            if (n.getParam("sek_drive/con_mode", MODE))
+            {
+                if (MODE == 1)
+                {
+                    //cout<<"3SPOOKYSPOOPY5ME"<<endl;
+                    //ROS_INFO("3SPOOKYSPOOPY5ME");
+                }
+                else
+                {
+                    //ROS_INFO("param != 1");
+                }
+            }
+            else
+            {
+                //ROS_INFO("could not get param");
+            }
+        }
+        else
+        {
+            //ROS_INFO("no param named con_mode");
+        }
         if (PLAYING==1)
         {
             pub1.publish(path_to_send);

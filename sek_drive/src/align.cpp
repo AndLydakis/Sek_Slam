@@ -6,14 +6,11 @@
 #include <vector>
 #include <time.h>
 #include <math.h>
-
+#include "ros/ros.h"
 #include "std_msgs/MultiArrayLayout.h"
 #include "std_msgs/MultiArrayDimension.h"
 #include "std_msgs/Int32MultiArray.h"
 #include "std_msgs/Int32.h"
-
-//#include <geometry_msgs/TransformStamped.h>
-//#include <tf/transform_broadcaster.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <visualization_msgs/Marker.h>
 #include <resource_retriever/retriever.h>
@@ -37,9 +34,11 @@ double marker_or_w_ = 0.0;
 double PUBLISHED = 0;
 double MARKER_FOUND = 0;
 double RM, LM;
-//turning direction 1 = left, -1 = right
-int current_orientation = 1;
+//turning direction 1 = left, -1 = right, 0 = straight
+int current_direction_ = 3;
+int previous_direction_ = 3;
 int ALIGNING = 0;
+int CURRENT_DIRECTION = 0; //1 = left, -1 = right, 0 = straight
 ros::Time time1_, time2_ ;
 
 void markerCallback(const sek_drive::ARMarker::ConstPtr marker)
@@ -63,6 +62,7 @@ void alignCallback(const std_msgs::Int32::ConstPtr align)
 
 int main(int argc, char *argv[])
 {	
+    
 	ros::init(argc, argv, "align_script");
 	ros::NodeHandle n;
 	ros::Duration(0.1).sleep();
@@ -71,7 +71,6 @@ int main(int argc, char *argv[])
     ros::Publisher pub1_ = n.advertise<std_msgs::Int32MultiArray>("motor_commands", 50);
     std_msgs::Int32MultiArray motor_commands;
     motor_commands.data.clear();
-	tf::TransformBroadcaster marker_broadcaster_;
     cout<<"Starting Alignment"<<endl;
     ros::Duration(0.01).sleep();
     //ARMarker Default position is considered face up
@@ -95,37 +94,84 @@ int main(int argc, char *argv[])
                     if ((marker_pos_x_ < 0.005) && (marker_pos_x_ > -0.005))
                     {
                         ROS_INFO("CENTERED AR MARKER");
-                        if(marker_pos_z_ > 0.30)
+                        if (previous_direction_==3 && current_direction_==3)
                         {
+                            previous_direction_ = 0 ;
+                            current_direction_ = 0;
                             motor_commands.data.push_back(-160);
                             motor_commands.data.push_back(160);
                             ROS_INFO("MOVING FORWARD");
                             pub1_.publish(motor_commands);
                             motor_commands.data.clear();
-                            //PUBLISHED = 1;
                         }
+                        else
+                        {
+                            previous_direction_ = current_direction_;
+                            current_direction_ = 0;
+                            if( (marker_pos_z_ > 0.30) && (current_direction_ != previous_direction_))
+                            {
+                                motor_commands.data.push_back(-160);
+                                motor_commands.data.push_back(160);
+                                ROS_INFO("MOVING FORWARD");
+                                pub1_.publish(motor_commands);
+                                motor_commands.data.clear();
+                                //PUBLISHED = 1;
+                            }
+                        }
+                        
                     }
                     else if (marker_pos_x_ < -0.005) //marker is at the right side of the camera
                     {
-                        motor_commands.data.push_back(120);
-                        motor_commands.data.push_back(-120);
-                        ROS_INFO("ROTATING LEFT TO ALIGN");
-                        pub1_.publish(motor_commands);
-                        motor_commands.data.clear();
-                        //PUBLISHED = 1;
+                        if (previous_direction_==3 && current_direction_==3)
+                        {
+                            previous_direction_ = 1 ;
+                            current_direction_ = 1;
+                            motor_commands.data.push_back(120);
+                            motor_commands.data.push_back(-120);
+                            ROS_INFO("MOVING FORWARD");
+                            pub1_.publish(motor_commands);
+                            motor_commands.data.clear();
+                        }
+                        else if (current_direction_ != previous_direction_)
+                        {
+                            previous_direction_ = current_direction_ ;
+                            current_direction_ = 1;
+                            motor_commands.data.push_back(120);
+                            motor_commands.data.push_back(-120);
+                            ROS_INFO("ROTATING LEFT TO ALIGN");
+                            pub1_.publish(motor_commands);
+                            motor_commands.data.clear();
+                            //PUBLISHED = 1;
+                        }
                     }
                     else if (marker_pos_x_ > 0.005) //marker is at the left of the camera
                     {
-                        motor_commands.data.push_back(-120);
-                        motor_commands.data.push_back(120);
-                        ROS_INFO("ROTATING RIGHT TO ALIGN");
-                        pub1_.publish(motor_commands);
-                        motor_commands.data.clear();
-                        //PUBLISHED = 1;
+                        if (previous_direction_==3 && current_direction_==3)
+                        {
+                            previous_direction_ = -1 ;
+                            current_direction_ = -1;
+                            motor_commands.data.push_back(-120);
+                            motor_commands.data.push_back(120);
+                            ROS_INFO("MOVING FORWARD");
+                            pub1_.publish(motor_commands);
+                            motor_commands.data.clear();
+                        }
+                        else if (current_direction_ != previous_direction_)
+                        {
+                            previous_direction_ = current_direction_ ;
+                            current_direction_ = -1;
+                            motor_commands.data.push_back(-120);
+                            motor_commands.data.push_back(120);
+                            ROS_INFO("ROTATING LEFT TO ALIGN");
+                            pub1_.publish(motor_commands);
+                            motor_commands.data.clear();
+                            //PUBLISHED = 1;
+                        }
                     }
                 }
+                
             }
         }
     }
-	return 0;
+    return 0;
 }
