@@ -15,7 +15,12 @@
     <node pkg="tf" type="static_transform_publisher" name="world_to_cam" 
         args="0.0 0.0 0.0 0 0 0 /world /camera_rgb_optical_frame 10"/>
         
-    <node pkg="sek_drive" type="align" name="align" required="true" output="screen"/>
+    <node pkg="sek_drive" type="align" name="align" required="true" output="screen">
+        <param name="cof_pos_x" value = "-0.864734091411"/>
+        <param name="cof_pos_y" value = "-0.219346039279"/>
+        <param name="cof_or_w" value = "-0.00251686649795"/>
+        <param name="cof_or_z" value = "0.999996832686"/>
+    </node>
     
     <node name="ar_pose" pkg="ar_pose" type="ar_single" respawn="false" output="screen">
         <param name="marker_pattern" type="string" value="data/coffee/coffee_1.patt"/>
