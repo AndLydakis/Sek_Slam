@@ -7,22 +7,18 @@
 #include <time.h>
 #include <math.h>
 #include <sensor_msgs/Joy.h>
+#include <sensor_msgs/Imu.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/Pose2D.h>
-//XARALAMPOS
-//#include <std_msgs/Int32MultiArray.h>
-//std_msgs::Int32MultiArray //motor_commands;
-//
 
 #include "std_msgs/MultiArrayLayout.h"
 #include "std_msgs/MultiArrayDimension.h"
 #include "std_msgs/Int32MultiArray.h"
 
 #include <tf/transform_broadcaster.h>
-//#include <tf_conversions/tf_eigen.h>
 #include "robodev.cpp"
 #include <sdc2130_skel/RoboteqDevice.h>
 #include <sdc2130_skel/ErrorCodes.h>
@@ -32,6 +28,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <cmath> 
+
+//XARALAMPOS
+#include <std_msgs/Int32MultiArray.h>
+std_msgs::Int32MultiArray motor_commands;
+//
 
 using namespace std;
 
@@ -46,21 +47,52 @@ using namespace std;
 #define MAX_ROT_VEL  4
 #define MIN_ROT_VEL  -4
 #define ACCELERATION 80
-int encoder_ppr = 455;
+/////////////////
+int ESD = 0; //emergency shutdown signal
+int MODE = 0; //Assistive or nope
+int REC = 0;
+int FIRST_POSE_SET = 0;
+int PLAYING = 0;
+int CAMERA_ON = 0;
+int SCAN_RECORD = 0;
+int ALLIGNING = 0;
+
+struct pose_coords
+{
+    float x;
+    float y;
+    float w;
+};
+
+struct pose_coords first_pose;
+std::vector<pose_coords> pose_vector;
+std::vector<pose_coords> pose_vector_to_use;
+nav_msgs::Path path_to_send;
+
+
+////////////////////////////
+int encoder_ppr = 920;
 int encoder_cpr;
 int LM = 0;
 int RM = 0;
 int lenc = 0, renc = 0, lenc_prev = 0, renc_prev = 0, lenc_init = 0, renc_init = 0, enc_errors = 0;
 int MXRPM ;
+int imu_counter = 0;
 double xx = 0, yy = 0, tt = 0;
+double imu_angle = 0;
+
 bool firstOdom = true;
+bool rp_from_imu = false;
+bool y_from_imu = false;
+
 RoboteqDevice device;
 
-ros::Time prev_time, current_time, enc_loop_time, bat_loop_time, tf_loop_time, mot_loop_time;
+ros::Time prev_time, current_time, enc_loop_time, bat_loop_time, tf_loop_time, mot_loop_time, imu_cur_time, imu_prev_time;
 ros::Publisher odom_pub;
 ros::Publisher pose_pub;
 ros::Publisher pose_pub2;
 tf::TransformBroadcaster *odom_broadcaster;
+geometry_msgs::Quaternion q_imu = tf::createQuaternionMsgFromYaw(0);
 
 double wrapToPi(double angle)
 {
@@ -87,6 +119,44 @@ void queryBat()
     {
         //ROS_INFO("BATTERY LEVEL : %d", battery_lvl/10);
     }
+}
+
+void alignCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
+{
+    std::vector<int>::const_iterator it = array->data.begin();
+    RM = *it;
+    it++;
+    LM = *it;
+    device.SetCommand(_GO,1, RM);// RIGHT
+    device.SetCommand(_GO,2, LM);//LEFT
+    cout<<"ALLIGNING WITH AR MARKER"<<endl;
+    cout<<"LEFT MOTOR :"<< LM<<endl;
+    cout<<"RIGHT MOTOR :"<<RM<<endl;
+    return;
+}
+
+void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) 
+{
+    //ROS_INFO("imu yaw:%f",imu_yaw);
+    imu_cur_time = ros::Time::now();
+    double ang_vel = msg->angular_velocity.z;
+    imu_angle = imu_angle + (imu_cur_time - imu_prev_time).toSec() * ang_vel;
+    imu_counter ++;
+    if (imu_counter == 20)
+    {
+        imu_counter = 0;
+        imu_angle = imu_angle / 20;
+        ROS_INFO("%f", imu_angle);
+        q_imu = tf::createQuaternionMsgFromRollPitchYaw(0, 0, wrapToPi(imu_angle));
+        ROS_INFO("Q_IMU");
+        ROS_INFO("%f", q_imu.x);
+        ROS_INFO("%f", q_imu.y);
+        ROS_INFO("%f", q_imu.z);
+        ROS_INFO("%f", q_imu.w);
+        ros::Duration(0.3).sleep();
+    }
+    //imu_yaw=tf::getYaw(msg->orientation);
+    //ROS_INFO("imu yaw:%f",tf::getYaw(msg->orientation));
 }
 
 void readEnc()
@@ -120,6 +190,8 @@ void readEnc()
         ros::Duration(0.1).sleep();
     }
     */
+    
+    
     if((status = device.GetValue(_C, 1, renc)) !=RQ_SUCCESS)
     {
         cout<<"failed -->"<<status<<endl;
@@ -142,6 +214,10 @@ void readEnc()
         //cout<<"Left Motor Encoder : "<<lenc<<endl;
         ros::Duration(0.1).sleep();
     }
+    
+    motor_commands.data.clear();
+    motor_commands.data.push_back(-renc);
+    motor_commands.data.push_back(lenc);
     renc=-renc;
     lenc = lenc - lenc_init;
     renc = renc - renc_init;
@@ -160,12 +236,12 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
     ros::Duration(0.01).sleep();
     if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
     {
-      cout<<"failed --> "<<status<<endl;
-      ros::Duration(5.0).sleep();
+        cout<<"failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
     }
     else
     {
-      cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
     }
     if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
     {
@@ -174,9 +250,386 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
     }
     else
     {
-        cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+        //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
     }
 }
+
+void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
+{
+    double L_V = ((msg->linear.x - (-0.66666666))/(0.66666666 - ( - 0.66666666))) * 1000;
+    
+    double A_V = ((msg->angular.z - (-1.04))/(1/04 - ( - 1.04))) * 1000;
+    
+    if (abs(L_V) < 200)
+    {
+        L_V  = 0;
+    }
+    if (abs(A_V) < 200)
+    {
+        A_V = 0;
+    }
+    if (L_V == 0)//akinito oxhma
+    {
+        if (A_V!=0)//epitopia peristrofi
+        {   //ROS_INFO("1");
+            RM = -A_V;
+            LM = -A_V;
+        }
+        else
+        {   //ROS_INFO("STOP");
+            RM = 0;
+            LM = 0;
+        }
+    }
+    else if ((L_V != 0) || (A_V !=0))
+    {
+        RM = -L_V;
+        LM = L_V;
+        if (L_V > 0)//kinisi mprosta
+        {   //ROS_INFO("MPROSTA");
+            if (A_V > 0)//strofi aristera
+            {   //ROS_INFO("ARISTERA");
+                RM = RM - A_V;
+                if (RM < (-1000))
+                {
+                    RM = -1000;
+                }
+                LM = LM + A_V;
+                if (LM > 400)
+                {
+                    LM = 400;
+                }
+            }
+            else if (A_V < 0)//strofi de3ia
+            {   //ROS_INFO("DEKSIA");
+                LM = LM - A_V;
+                if (LM > 1000)
+                {
+                    LM = 1000;
+                }
+                RM = RM + A_V;
+                if (RM < (-400))
+                {
+                    RM = -400;
+                }
+            }
+        }
+        else if (L_V < 0)//kinisi pisw
+        {   //ROS_INFO("PISW");
+            RM = -L_V; //>0
+            LM = L_V; //<0
+            if (A_V > 0)//strofi aristera
+            {   //ROS_INFO("ARISTERA");
+                RM = RM + A_V;
+                if (RM > 1000)
+                {
+                    RM = 1000;
+                }
+                LM = LM + A_V;
+                if (LM > (-400))
+                {
+                    LM = -400;
+                }
+            }
+            else if (A_V < 0)//strofi de3ia
+            {   //ROS_INFO("DEKSIA");
+                LM = LM + A_V;
+                if (LM < (-1000))
+                {
+                    LM = - 1000;
+                }
+                RM = RM + A_V;
+                if (RM < 400)
+                {
+                    RM = 400;
+                }
+            }
+        }
+    }
+    
+    int status;
+    
+    ROS_INFO ("LM : %d        RM : %d",LM, RM);
+    if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
+    {
+        cout<<"failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+    else
+    {
+        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+    }
+    if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
+    {
+        cout<<"failed -->"<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+    else
+    {
+        //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+    }
+    
+}
+
+
+
+void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
+{
+    
+    int status;
+    double L_V = msg->axes[1]*1000;
+    double A_V = msg->axes[0]*1000;
+    //ROS_INFO("L_V : %f        A_V : %f",L_V, A_V);
+    if((L_V != 0) || (A_V != 0))
+    {
+        if(L_V == 0)//akinito oxhma
+        {
+            if(A_V!=0)//epitopia peristrofi
+            {   //ROS_INFO("1");
+                RM = -A_V;
+                LM = -A_V;
+            }
+            else
+            {   //ROS_INFO("STOP");
+                RM = 0;
+                LM = 0;
+            }
+        }
+        else if ((L_V != 0) || (A_V !=0))
+        {
+            RM = -L_V;
+            LM = L_V;
+            if(L_V > 0)//kinisi mprosta
+            {   //ROS_INFO("MPROSTA");
+                if(A_V > 0)//strofi aristera
+                {   //ROS_INFO("ARISTERA");
+                    RM = RM - A_V;
+                    if (RM < (-1000))
+                    {
+                        RM = -1000;
+                    }
+                    LM = LM + A_V;
+                    if (LM > 400)
+                    {
+                        LM = 400;
+                    }
+                }
+                else if (A_V < 0)//strofi de3ia
+                {   //ROS_INFO("DEKSIA");
+                    LM = LM - A_V;
+                    if (LM > 1000)
+                    {
+                        LM = 1000;
+                    }
+                    RM = RM + A_V;
+                    if (RM < (-400))
+                    {
+                        RM = -400;
+                    }
+                }
+            }
+            else if (msg->axes[1]<0)//kinisi pisw
+            {   //ROS_INFO("PISW");
+                RM = -L_V; //>0
+                LM = L_V; //<0
+                if(A_V > 0)//strofi aristera
+                {   //ROS_INFO("ARISTERA");
+                    RM = RM + A_V;
+                    if (RM > 1000)
+                    {
+                        RM = 1000;
+                    }
+                    LM = LM + A_V;
+                    if (LM > (-400))
+                    {
+                        LM = -400;
+                    }
+                }
+                else if (A_V < 0)//strofi de3ia
+                {   //ROS_INFO("DEKSIA");
+                    LM = LM + A_V;
+                    if (LM < (-1000))
+                    {
+                        LM = - 1000;
+                    }
+                    RM = RM + A_V;
+                    if (RM < 400)
+                    {
+                        RM = 400;
+                    }
+                }
+            }
+        }
+        ROS_INFO ("LM : %d        RM : %d",LM, RM);
+        if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
+        {
+            cout<<"failed --> "<<status<<endl;
+            ros::Duration(5.0).sleep();
+        }
+        else
+        {
+            //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+        }
+        if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+        }
+        else
+        {
+            //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+        }
+    }
+    else 
+    {
+        if((status = device.SetCommand(_GO, 1, 0)) != RQ_SUCCESS)
+        {
+            cout<<"failed --> "<<status<<endl;
+            ros::Duration(5.0).sleep();
+        }
+        else
+        {
+            //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+        }
+        if((status = device.SetCommand(_GO, 2, 0)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+        }
+        else
+        {
+            //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+        }
+        if(msg->buttons[1]==1)//CIRCLE BUTTON
+        {
+            system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
+        }
+        if(msg->buttons[3]==1)//SQUARE BUTTON
+        {
+            ROS_INFO("SAVING MAP as \"mymap\"");
+            system("rosrun map_server map_saver -f mymap &");
+        }
+        if(msg->buttons[2]==1)//Χ ΒUTTON
+        {   
+            if(CAMERA_ON==0)
+            {
+                cout<<"Camera on"<<endl;
+                ROS_INFO("Starting Streaming");
+                system("roslaunch sek_drive mast_kinect.launch &");
+                CAMERA_ON = 1 ;
+            }
+            else
+            {
+                cout<<"Camera off"<<endl;
+                ROS_INFO("Shutting Down Streaming");
+                system("rosnode kill /camera/camera_nodelet_manager &");
+                system("rosnode kill /mjepg_server &");
+                ros::Duration(3).sleep();
+                CAMERA_ON = 0;
+                //system("rosnode cleanup")
+                system("/home/skel/cleanup.sh ");
+            }
+        }
+        if(msg->buttons[6]==1)//START RECORDING //L1
+        {
+            
+            if(REC==0)
+            {
+                REC=1; 
+                ROS_INFO("Start Recording");
+                //system("roslaunch sek_drive record.launch &");
+                //ros::Duration(3).sleep();
+            }
+            
+        }
+        if(msg->buttons[7]==1)//STOP RECORDING //R1
+        {
+            if(REC==1)
+            {
+                REC=0;
+                ROS_INFO("Stop Recording");
+                pose_vector_to_use =  pose_vector;
+                pose_vector.clear();
+                FIRST_POSE_SET = 0;
+                //system("rosnode kill /maneuvers/record_man &");
+                //ros::Duration(3).sleep();
+                //system("/home/skel/cleanup.sh &");
+            } 
+        }
+        if(msg->buttons[4]==1)//START PLAYING //L2
+        {
+            if((PLAYING==0)&&(REC==0))
+            {
+                PLAYING=1;
+                geometry_msgs::PoseStamped pose_to_add;
+                ROS_INFO("Playing Maneuver");
+                //system("rosbag play /home/skel/.ros/maneuver.bag &");
+                for(unsigned i = 0; i < pose_vector.size(); i++)
+                {
+                    pose_to_add.pose.position.x = pose_vector[i].x;
+                    pose_to_add.pose.position.y = pose_vector[i].y;
+                    pose_to_add.pose.orientation.w = pose_vector[i].w;
+                    path_to_send.poses.push_back(pose_to_add);
+                }
+            }
+        }
+        if(msg->buttons[5]==1)//STOP PLAYING //R2
+        {
+            if(PLAYING==1)
+            {
+                PLAYING=0;
+                ROS_INFO("Stopping Maneuver");
+                //system("killall -9 play");
+                //system("/home/skel/cleanup.sh &");
+                
+            }
+        }
+        if((msg->buttons[10]==1)&&(msg->buttons[11]==1))
+        {   
+            ROS_INFO("Restarting Python Server");
+            system("rosrun robot_server robotserverBl.py &");
+        }
+        else if (msg->buttons[10]==1)
+        {
+            
+        }
+        else if (msg->buttons[11]==1)
+        {
+
+        }
+        else if((msg->buttons[8]==1)&&(msg->buttons[9]==1))//SELECT & START
+        {
+            printf("Emergency Shutdown\n");			
+            if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
+            {
+                cout<<"failed --> \n"<<status<<endl;
+            }
+            else 
+            {
+            }
+            ros::Duration(0.01).sleep(); 
+            if((status = device.SetCommand(_GO, 1,- 0)) != RQ_SUCCESS)
+            {
+                cout<<"failed --> \n"<<status<<endl;
+                device.Disconnect();
+                system("/home/skel/cleanup.sh &");
+                ros::shutdown();
+            }
+            else
+            {
+            }
+            ROS_INFO("SHUTTING DOWN");
+            ros::shutdown();
+        }
+        if((msg->buttons[9]==1)&&(msg->buttons[8]==0))//START
+        {
+            ROS_INFO("Giving Start Signal");
+            //system("/home/skel/start");
+            //return;
+        }
+    }
+}
+
 
 void calcOdom()
 {
@@ -195,16 +648,13 @@ void calcOdom()
     
     int diff_lenc = lenc - lenc_prev;
     int diff_renc = renc - renc_prev;
-    //int diff_lenc = lenc;
-    //int diff_renc = renc;
-    //ROS_INFO("encoder_cpr : %d",encoder_cpr);
     
     renc_prev = renc;
     lenc_prev = lenc;
     
     double l_w = diff_lenc * 2.0 * PI / (double)encoder_cpr / delta_time;
     double r_w = diff_renc * 2.0 * PI / (double)encoder_cpr / delta_time;
-    ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
+    //ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
     
     double l_v = l_w * DIAMETER / 2.0;
     double r_v = r_w * DIAMETER / 2.0;
@@ -213,19 +663,14 @@ void calcOdom()
     //ROS_INFO("V AFTER : %f",v);
     double w = (r_v - l_v) / WHEEL_BASE_WIDTH;
     
-    /*
-    double l_v = (lenc/60)*delta_time*2*M_PI*(DIAMETER/2);
-    double r_v = -(renc/60)*delta_time*2*M_PI*(DIAMETER/2); 
-    ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
-    double v = (l_v + r_v) / 2.0;
-    //ROS_INFO("V AFTER : %f",v);
-    double w = (r_v - l_v) / WHEEL_BASE_WIDTH;
-    */
     geometry_msgs::Quaternion quat;
     double roll = 0;
     double pitch = 0;
     double yaw = 0;
+    
     tf::Quaternion q;
+    tf::quaternionMsgToTF(q_imu, q);
+    tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
     
     if (firstOdom)
     {
@@ -236,9 +681,24 @@ void calcOdom()
     }
     else
     {
-        tt = tt + w * delta_time;
-        //ROS_INFO("TT BEFORE WRAP : %f",tt);
-        tt = wrapToPi(tt);
+        if (!rp_from_imu)
+        {
+            roll = 0 ;
+            pitch = 0;
+        }
+        if (y_from_imu)
+        {
+            tt=wrapToPi(yaw);
+            //ROS_INFO("TT : %f", tt);
+        }
+        
+        else
+        { 
+            tt = tt + w * delta_time;
+            //ROS_INFO("TT BEFORE WRAP : %f",tt);
+            tt = wrapToPi(tt);
+            //ROS_INFO("TT : %f", tt);
+        }
         
     }
     //ROS_INFO("V BEFORE CREATE QUATERNION : %f",v);
@@ -256,9 +716,9 @@ void calcOdom()
     //odom_msg.header.frame_id = "odom";
     odom_msg.header.stamp = now;
     odom_msg.pose.pose.position.x = xx;
-    ROS_INFO("%f",xx);
+    //ROS_INFO("%f",xx);
     odom_msg.pose.pose.position.y = yy;
-    ROS_INFO("%f",yy);
+    //ROS_INFO("%f",yy);
     odom_msg.pose.pose.position.z = 0;
     odom_msg.pose.pose.orientation = quat;
     odom_msg.child_frame_id = "base_link";
@@ -287,7 +747,7 @@ void calcOdom()
     odom_trans.transform.translation.y = yy;
     odom_trans.transform.translation.z = 0.0;
     odom_trans.transform.rotation = quat;
-    odom_broadcaster->sendTransform(odom_trans);
+    //odom_broadcaster->sendTransform(odom_trans);
     
     geometry_msgs::PoseStamped::Ptr pose_st_msg;
     pose_st_msg = boost::make_shared<geometry_msgs::PoseStamped>();
@@ -323,18 +783,23 @@ int main(int argc, char *argv[])
     ros::NodeHandle n;
     prev_time = ros::Time::now();
     
+    imu_prev_time = ros::Time::now();
+    
     ros::Duration(0.1).sleep();
     odom_broadcaster = new tf::TransformBroadcaster;
-    ros::Subscriber sub = n.subscribe("joy", 1, teleopCallback);
     odom_pub = n.advertise < nav_msgs::Odometry > ("/odom", 10);
     pose_pub2 = n.advertise<geometry_msgs::PoseStamped>("/poseStamped",5);
-    //ros::Subscriber sub2 = n.subscribe("cmd_vel", 1, cmdVelCallback);
-    //ros::Subscriber sub3 =  n.subscribe("amcl_pose", 1, recManCallback);
-    //ros::Subscriber sub3 = n.subscribe("//motor_commands", 1, alignCallback);
-    //ros::Publisher pub1 = n.advertise<nav_msgs::Path>("sent_path", 50);
     
-    //ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
-    //tf::TransformBroadcaster odom_broadcaster;
+    ros::Subscriber sub = n.subscribe("/joy", 1, teleopCallback2);
+    ros::Subscriber imu_sub = n.subscribe("/imu/data", 10, imuCallback);
+    ros::Subscriber align_sub = n.subscribe("/motor_commands", 1, alignCallback);
+    ros::Subscriber cmd_vel_sub = n.subscribe("/cmd_vel", 100, cmdVelCallback);
+    
+    //XARALAMPOS
+    ros::Publisher pub2 = n.advertise<std_msgs::Int32MultiArray>("/xar_odom", 1000);
+    motor_commands.data.push_back(0);
+    motor_commands.data.push_back(0);
+    //
     
     //ROS_INFO("- SetConfig(_DINA, 1, 1)...");
     if((status = device.SetConfig(_DINA, 1, 1)) != RQ_SUCCESS)
@@ -384,16 +849,15 @@ int main(int argc, char *argv[])
     */
     printf ("Sek Operational\n\n");
     ros::Duration(0.01).sleep(); //sleep for 10 ms
-    //ros::AsyncSpinner spinner(1);
-    //spinner.start();
     while (ros::ok())
     {
         ros::spinOnce();
         current_time = ros::Time::now();
-        if ((current_time.toSec() - enc_loop_time.toSec())>=0.3)
+        if ((current_time.toSec() - enc_loop_time.toSec())>=0.1)
         {
             readEnc();
             calcOdom();
+            pub2.publish(motor_commands);
             enc_loop_time = current_time;
         }
         if ((current_time.toSec() - bat_loop_time.toSec())>=1)
