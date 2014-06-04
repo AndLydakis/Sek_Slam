@@ -256,20 +256,30 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
 {
-    double L_V = ((msg->linear.x - (-0.66666666))/(0.66666666 - ( - 0.66666666))) * 1000;
+    //SCALE VELOCITIES TO MOTOR COMMANDS
+    double L_V = (-1 * (1 - ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))  +
+            ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))*1000;
     
-    double A_V = ((msg->angular.z - (-1.04))/(1/04 - ( - 1.04))) * 1000;
-    
+    double A_V = (-1 * (1 - ((msg->angular.z - ((-1.04000))) / (1.04000 - ( - 1.04000))))  +
+            ((msg->angular.z - ((-1.04000))) / (1.04000 - ( - 1.04000))))*1000;
+            
+    ROS_INFO("msg.linear_x : %f       msg.anglular.z : %f", msg->linear.x, msg->angular.z);
+    ROS_INFO("L_V : %f            A_V : %f", L_V, A_V);
+    /*
     if (abs(L_V) < 200)
     {
+        ROS_INFO("IF #1");
         L_V  = 0;
     }
     if (abs(A_V) < 200)
     {
+        ROS_INFO("IF #2");
         A_V = 0;
     }
+    */
     if (L_V == 0)//akinito oxhma
     {
+        ROS_INFO("LV = 0");
         if (A_V!=0)//epitopia peristrofi
         {   //ROS_INFO("1");
             RM = -A_V;
@@ -286,9 +296,9 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
         RM = -L_V;
         LM = L_V;
         if (L_V > 0)//kinisi mprosta
-        {   //ROS_INFO("MPROSTA");
+        {   ROS_INFO("MPROSTA");
             if (A_V > 0)//strofi aristera
-            {   //ROS_INFO("ARISTERA");
+            {   ROS_INFO("ARISTERA");
                 RM = RM - A_V;
                 if (RM < (-1000))
                 {
@@ -301,7 +311,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                 }
             }
             else if (A_V < 0)//strofi de3ia
-            {   //ROS_INFO("DEKSIA");
+            {   ROS_INFO("DEKSIA");
                 LM = LM - A_V;
                 if (LM > 1000)
                 {
@@ -315,11 +325,11 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
             }
         }
         else if (L_V < 0)//kinisi pisw
-        {   //ROS_INFO("PISW");
+        {   ROS_INFO("PISW");
             RM = -L_V; //>0
             LM = L_V; //<0
             if (A_V > 0)//strofi aristera
-            {   //ROS_INFO("ARISTERA");
+            {   ROS_INFO("ARISTERA");
                 RM = RM + A_V;
                 if (RM > 1000)
                 {
@@ -332,7 +342,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                 }
             }
             else if (A_V < 0)//strofi de3ia
-            {   //ROS_INFO("DEKSIA");
+            {   ROS_INFO("DEKSIA");
                 LM = LM + A_V;
                 if (LM < (-1000))
                 {
