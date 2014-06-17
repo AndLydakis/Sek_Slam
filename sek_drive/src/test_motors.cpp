@@ -17,6 +17,7 @@
 #include "std_msgs/MultiArrayLayout.h"
 #include "std_msgs/MultiArrayDimension.h"
 #include "std_msgs/Int32MultiArray.h"
+#include "std_msgs/Int32.h"
 
 #include <tf/transform_broadcaster.h>
 #include "robodev.cpp"
@@ -42,6 +43,7 @@ using namespace std;
 #define TWOPI /*360*/6.2831853070
 #define RADS 57.2958
 #define MAX_SPEED 1000 //command
+#define MAX_SPEED_LIMIT 0.75
 #define MAX_LIN_VEL  2
 #define MIN_LIN_VEL  -2
 #define MAX_ROT_VEL  4
@@ -68,14 +70,13 @@ struct pose_coords first_pose;
 std::vector<pose_coords> pose_vector;
 std::vector<pose_coords> pose_vector_to_use;
 nav_msgs::Path path_to_send;
-
-
 ////////////////////////////
+
 int encoder_ppr = 920;
 int encoder_cpr;
 int LM = 0;
 int RM = 0;
-int lenc = 0, renc = 0, lenc_prev = 0, renc_prev = 0, lenc_init = 0, renc_init = 0, enc_errors = 0;
+int lenc = 0, renc = 0, lenc_prev = 0, renc_prev = 0, lenc_init = 0, renc_init = 0, enc_errors = 0, lenc_2, renc_2;
 int MXRPM ;
 int imu_counter = 0;
 double xx = 0, yy = 0, tt = 0;
@@ -135,6 +136,17 @@ void alignCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
     return;
 }
 
+void esdCallback(const std_msgs::Int32::ConstPtr& msg)
+{
+    if (msg->data==1)
+    {
+        ESD = 1;
+    }
+    else
+    {
+        ESD = 0;
+    }
+}
 void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) 
 {
     //ROS_INFO("imu yaw:%f",imu_yaw);
@@ -159,15 +171,11 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
     //ROS_INFO("imu yaw:%f",tf::getYaw(msg->orientation));
 }
 
-void readEnc()
+void readEnc2()
 {
     int status;
-    if (!ros::ok() || !device.IsConnected())
-        return;
-    ros::Time now = ros::Time::now();
-    double delta = (now - prev_time).toSec();
-    /*
-    if((status = device.GetValue(_ABSPEED, 1, renc)) !=RQ_SUCCESS)
+    //READ ABSOLUTE RPM VALUE
+    if((status = device.GetValue(_ABSPEED, 1, renc_2)) !=RQ_SUCCESS)
     {
         cout<<"failed -->"<<status<<endl;
         ros::Duration(5.0).sleep();
@@ -176,9 +184,9 @@ void readEnc()
     else
     {
         //cout<<"Right Motor Encoder : "<<renc<<endl;
-        ros::Duration(0.1).sleep();
+        ros::Duration(0.01).sleep();
     }
-    if((status = device.GetValue(_ABSPEED, 2, lenc)) !=RQ_SUCCESS)
+    if((status = device.GetValue(_ABSPEED, 2, lenc_2)) !=RQ_SUCCESS)
     {
         cout<<"failed -->"<<status<<endl;
         ros::Duration(5.0).sleep();
@@ -187,11 +195,24 @@ void readEnc()
     else
     {
         //cout<<"Left Motor Encoder : "<<lenc<<endl;
-        ros::Duration(0.1).sleep();
+        ros::Duration(0.01).sleep();
     }
-    */
     
+    motor_commands.data.clear();
+    motor_commands.data.push_back(-renc_2);
+    motor_commands.data.push_back(lenc_2);
+}
+
+void readEnc()
+{
+    int status;
     
+    if (!ros::ok() || !device.IsConnected())
+        return;
+    ros::Time now = ros::Time::now();
+    double delta = (now - prev_time).toSec();
+    
+    //READ MOTOR POSITION 
     if((status = device.GetValue(_C, 1, renc)) !=RQ_SUCCESS)
     {
         cout<<"failed -->"<<status<<endl;
@@ -201,7 +222,7 @@ void readEnc()
     else
     {
         //cout<<"Right Motor Encoder : "<<renc<<endl;
-        ros::Duration(0.1).sleep();
+        //ros::Duration(0.1).sleep();
     }
     if((status = device.GetValue(_C, 2, lenc)) !=RQ_SUCCESS)
     {
@@ -212,12 +233,9 @@ void readEnc()
     else
     {
         //cout<<"Left Motor Encoder : "<<lenc<<endl;
-        ros::Duration(0.1).sleep();
+        //ros::Duration(0.1).sleep();
     }
     
-    motor_commands.data.clear();
-    motor_commands.data.push_back(-renc);
-    motor_commands.data.push_back(lenc);
     renc=-renc;
     lenc = lenc - lenc_init;
     renc = renc - renc_init;
@@ -226,7 +244,6 @@ void readEnc()
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {
     //ROS_INFO("lelelelel");
-    
     int status;
     LM = msg->axes[1]*1000;
     RM = -msg->axes[3]*1000;
@@ -255,7 +272,31 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
 }
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
-{
+{   
+    int status;
+    if (ESD = 1)
+    {
+        if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
+        {
+            cout<<"failed --> \n"<<status<<endl;
+        }
+        else 
+        {
+            ROS_INFO("EMERGENCY STOP ENGAGED");
+        }
+        ros::Duration(0.01).sleep(); 
+        if((status = device.SetCommand(_GO, 1,- 0)) != RQ_SUCCESS)
+        {
+            cout<<"failed --> \n"<<status<<endl;
+            device.Disconnect();
+            ros::shutdown();
+        }
+        else
+        {
+           ROS_INFO("EMERGENCY STOP ENGAGED"); 
+        }
+        return;
+    }
     //SCALE VELOCITIES TO MOTOR COMMANDS
     double L_V = (-1 * (1 - ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))  +
             ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))*1000;
@@ -263,8 +304,8 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
     double A_V = (-1 * (1 - ((msg->angular.z - ((-1.04000))) / (1.04000 - ( - 1.04000))))  +
             ((msg->angular.z - ((-1.04000))) / (1.04000 - ( - 1.04000))))*1000;
             
-    ROS_INFO("msg.linear_x : %f       msg.anglular.z : %f", msg->linear.x, msg->angular.z);
-    ROS_INFO("L_V : %f            A_V : %f", L_V, A_V);
+    //ROS_INFO("msg.linear_x : %f       msg.anglular.z : %f", msg->linear.x, msg->angular.z);
+    //ROS_INFO("L_V : %f            A_V : %f", L_V, A_V);
     /*
     if (abs(L_V) < 200)
     {
@@ -279,7 +320,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
     */
     if (L_V == 0)//akinito oxhma
     {
-        ROS_INFO("LV = 0");
+        //ROS_INFO("LV = 0");
         if (A_V!=0)//epitopia peristrofi
         {   //ROS_INFO("1");
             RM = -A_V;
@@ -296,9 +337,9 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
         RM = -L_V;
         LM = L_V;
         if (L_V > 0)//kinisi mprosta
-        {   ROS_INFO("MPROSTA");
+        {   //ROS_INFO("MPROSTA");
             if (A_V > 0)//strofi aristera
-            {   ROS_INFO("ARISTERA");
+            {   //ROS_INFO("ARISTERA");
                 RM = RM - A_V;
                 if (RM < (-1000))
                 {
@@ -311,7 +352,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                 }
             }
             else if (A_V < 0)//strofi de3ia
-            {   ROS_INFO("DEKSIA");
+            {   //ROS_INFO("DEKSIA");
                 LM = LM - A_V;
                 if (LM > 1000)
                 {
@@ -325,11 +366,11 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
             }
         }
         else if (L_V < 0)//kinisi pisw
-        {   ROS_INFO("PISW");
+        {   //ROS_INFO("PISW");
             RM = -L_V; //>0
             LM = L_V; //<0
             if (A_V > 0)//strofi aristera
-            {   ROS_INFO("ARISTERA");
+            {   //ROS_INFO("ARISTERA");
                 RM = RM + A_V;
                 if (RM > 1000)
                 {
@@ -342,7 +383,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
                 }
             }
             else if (A_V < 0)//strofi de3ia
-            {   ROS_INFO("DEKSIA");
+            {   //ROS_INFO("DEKSIA");
                 LM = LM + A_V;
                 if (LM < (-1000))
                 {
@@ -356,14 +397,12 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
             }
         }
     }
-    
-    int status;
-    
-    ROS_INFO ("LM : %d        RM : %d",LM, RM);
+    //ROS_INFO ("LM : %d        RM : %d",LM, RM);
     if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
     {
         cout<<"failed --> "<<status<<endl;
         ros::Duration(5.0).sleep();
+        //ros::shutdown();s
     }
     else
     {
@@ -373,6 +412,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
     {
         cout<<"failed -->"<<status<<endl;
         ros::Duration(5.0).sleep();
+        //ros::shutdown();
     }
     else
     {
@@ -381,12 +421,58 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
     
 }
 
+void motorCommandCallback(const std_msgs::Int32MultiArray::ConstPtr& motor_comms)
+{
+    int status;
+    if((status = device.SetCommand(_GO,1, motor_comms->data[0])) != RQ_SUCCESS) //right motor
+    {
+        cout<<"motor command M1 failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+    else
+    {
+        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+    }
+    if((status = device.SetCommand(_GO,2, motor_comms->data[1])) != RQ_SUCCESS) //left motor
+    {
+        cout<<"motor command M1 failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+    else
+    {
+        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+    }
+}
 
 
 void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
 {
-    
     int status;
+    /*
+    if (ESD = 1)
+    {
+        if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
+        {
+            cout<<"failed --> \n"<<status<<endl;
+        }
+        else 
+        {
+            ROS_INFO("TCB2a EMERGENCY STOP ENGAGED");
+        }
+        ros::Duration(0.01).sleep(); 
+        if((status = device.SetCommand(_GO, 1,- 0)) != RQ_SUCCESS)
+        {
+            cout<<"failed --> \n"<<status<<endl;
+            device.Disconnect();
+            ros::shutdown();
+        }
+        else
+        {
+           ROS_INFO("TCB2b EMERGENCY STOP ENGAGED"); 
+        }
+        return;
+    }
+    */
     double L_V = msg->axes[1]*1000;
     double A_V = msg->axes[0]*1000;
     //ROS_INFO("L_V : %f        A_V : %f",L_V, A_V);
@@ -470,10 +556,24 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
                 }
             }
         }
-        ROS_INFO ("LM : %d        RM : %d",LM, RM);
+        //ROS_INFO ("LM : %d        RM : %d",LM, RM);
+        /*
+         * LIMIT ROBOT VELOCITY AT 75% OF MAXIMUM FOR SAFETY AND 
+         * BETTER CONTROL OVER ACCELERATION/DECCELERATION 
+         * CHANGES MUST BE ALSO MADE IN THE AMCL CONFIG FILES
+         * FOR THE NAVIGATION PACKAGE
+        */
+        if(abs(LM) > 750)
+        {
+            LM = (LM/abs(LM)) * MAX_SPEED * MAX_SPEED_LIMIT;
+        }
+        if(abs(RM) > 750)
+        {
+            RM = (RM/abs(RM)) * MAX_SPEED * MAX_SPEED_LIMIT;
+        }
         if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
         {
-            cout<<"failed --> "<<status<<endl;
+            cout<<"motor command M1 failed --> "<<status<<endl;
             ros::Duration(5.0).sleep();
         }
         else
@@ -482,7 +582,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
         }
         if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
         {
-            cout<<"failed -->"<<status<<endl;
+            cout<<"motor command M2 failed -->"<<status<<endl;
             ros::Duration(5.0).sleep();
         }
         else
@@ -494,7 +594,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
     {
         if((status = device.SetCommand(_GO, 1, 0)) != RQ_SUCCESS)
         {
-            cout<<"failed --> "<<status<<endl;
+            cout<<"Stopping M1 failed --> "<<status<<endl;
             ros::Duration(5.0).sleep();
         }
         else
@@ -503,7 +603,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
         }
         if((status = device.SetCommand(_GO, 2, 0)) !=RQ_SUCCESS)
         {
-            cout<<"failed -->"<<status<<endl;
+            cout<<"Stopping M2 failed -->"<<status<<endl;
             ros::Duration(5.0).sleep();
         }
         else
@@ -609,7 +709,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
         }
         else if((msg->buttons[8]==1)&&(msg->buttons[9]==1))//SELECT & START
         {
-            printf("Emergency Shutdown\n");			
+            printf("Emergency Shutdown\n");	
             if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
             {
                 cout<<"failed --> \n"<<status<<endl;
@@ -789,8 +889,8 @@ int main(int argc, char *argv[])
     device.SetConfig(_RWD, 2, -1);
     
     ros::init(argc, argv, "move_script");
-
     ros::NodeHandle n;
+    
     prev_time = ros::Time::now();
     
     imu_prev_time = ros::Time::now();
@@ -804,6 +904,7 @@ int main(int argc, char *argv[])
     ros::Subscriber imu_sub = n.subscribe("/imu/data", 10, imuCallback);
     ros::Subscriber align_sub = n.subscribe("/motor_commands", 1, alignCallback);
     ros::Subscriber cmd_vel_sub = n.subscribe("/cmd_vel", 100, cmdVelCallback);
+    //ros::Subscriber laser_sub = n.subscribe("/esd", 100, laserCallback);
     
     //XARALAMPOS
     ros::Publisher pub2 = n.advertise<std_msgs::Int32MultiArray>("/xar_odom", 1000);
@@ -831,12 +932,12 @@ int main(int argc, char *argv[])
     
     //ROS_INFO("Reading RPM");
     if((status = device.GetConfig(_MXRPM, 1, MXRPM)) !=RQ_SUCCESS)
-        cout<<"failed -->"<<status<<endl;
+        cout<<"reading rpm M1 failed -->"<<status<<endl;
     else
         cout<<"MOTOR 1 MAXRPM : "<<MXRPM<<endl;
         
     if((status = device.GetConfig(_MXRPM, 2, MXRPM)) !=RQ_SUCCESS)
-        cout<<"failed -->"<<status<<endl;
+        cout<<"reading rpm M2 failed -->"<<status<<endl;
     else
         cout<<"MOTOR 2 MAXRPM : "<<MXRPM<<endl;
     
@@ -861,20 +962,32 @@ int main(int argc, char *argv[])
     ros::Duration(0.01).sleep(); //sleep for 10 ms
     while (ros::ok())
     {
+        if (ESD == 1)
+        {
+            ROS_INFO("ESD engaged");
+            ros::Duration(5).sleep();
+            break;
+        }
+        
         ros::spinOnce();
         current_time = ros::Time::now();
+        //XARALAMPOS
+        /*
+        readEnc2();
+        pub2.publish(motor_commands);
+        */
         if ((current_time.toSec() - enc_loop_time.toSec())>=0.1)
         {
             readEnc();
             calcOdom();
-            pub2.publish(motor_commands);
+            //pub2.publish(motor_commands);
             enc_loop_time = current_time;
         }
-        if ((current_time.toSec() - bat_loop_time.toSec())>=1)
-        {
-            queryBat();
-            bat_loop_time = current_time;
-        }
+        //if ((current_time.toSec() - bat_loop_time.toSec())>=1)
+        //{
+        //    queryBat();
+        //    bat_loop_time = current_time;
+        //}
             
     }
     device.Disconnect();
