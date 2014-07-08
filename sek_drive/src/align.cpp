@@ -72,7 +72,7 @@ class coffee_manager
     
     coffee_manager (ros::NodeHandle& n): n_(n), current_direction_(3), previous_direction_(3),
         ORDER_CANCELLED(0), ORDER_COMPLETED(0), ORDER_GIVEN(0), ORDER_UNDER_PROCCESS(0), MARKER_FOUND(0), SEARCHING(0),
-        ALIGNING(0), CUP_FILLED(0), DESTINATION_REACHED(0), DESTINATION_SET(0), XY_THRES(0.3), YAW_THRES(0.5), RM(0), LM(0),
+        ALIGNING(0), CUP_FILLED(0), DESTINATION_REACHED(0), DESTINATION_SET(0), RETURNING_ORDER(0), XY_THRES(0.3), YAW_THRES(0.5), RM(0), LM(0),
         cof_x_(0), cof_y_(0), cof_or_w(0), cof_or_z(0), roll(0), pitch(0), yaw(0)
     {}
     
@@ -198,6 +198,8 @@ class coffee_manager
                 //else if (ORDER_GIVEN == 0)
                 else if (n_.getParam("/align/order_given", ORDER_GIVEN) || n_.getParam("/align/cup_filled", CUP_FILLED))
                 {
+                    ROS_INFO("RETURNING ORDER GIVEN : %d", ORDER_GIVEN);
+                    ROS_INFO("RETURNING ORDER CANCELLED : %d", ORDER_CANCELLED);
                     ros::Duration(1.0).sleep();
                     if ((ORDER_GIVEN == 1) && (CUP_FILLED == 0))
                     {   
@@ -219,11 +221,13 @@ class coffee_manager
                             }
                         }
                     }
-                    else
+                    /*
+                    else if ((ORDER_GIVEN == 1)&&(CUP_FILLED==1))
                     {
                         ROS_INFO("order not given");
                         ros::Duration(1.0).sleep();
                     }
+                    */
                 }
                 
             }
@@ -311,7 +315,6 @@ class coffee_manager
         //ros::Duration(3.0).sleep();
         //CLIENT SERVER WAIT UNTIL CUP IS FULL
         //server sends 0 when cup is full
-        
         if (ALIGNING==1)
         {   
             ROS_INFO("ALIGNING");
@@ -322,9 +325,11 @@ class coffee_manager
                 {
                     //We have found the marker, the robot should stop and align
                     //only if it is not returning to the client
-                    DESTINATION_REACHED = 1;
-                    
-                    
+                    if(DESTINATION_REACHED == 0)
+                    {
+                         DESTINATION_REACHED = 1;
+                        system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
+                    }
                 }
                 //if(inPosition() && CUP_FILLED==0)
                 if ( (inPosition()||(DESTINATION_REACHED==1)) && CUP_FILLED==0)
@@ -337,26 +342,24 @@ class coffee_manager
                     fillCup(n_);
                     ROS_INFO("Cup full, returning to client");
                     ros::Duration(1.0).sleep();
-                    /*
-                    CUP_FILLED = 1;
-                    ALIGNING = 0;
-                    SEARCHING = 0;
-                    MARKER_FOUND = 0;
-                    */
+                    
                     // The robot has completed the interaction with the valve
                     // it should head back to the client
                     
                     client_spot.header.stamp = ros::Time::now();
                     destPub.publish(client_spot);
                     DESTINATION_SET = 1;
+                    RETURNING_ORDER = 1;
                     n_.setParam("align/destination_set", DESTINATION_SET);
+                    n_.setParam("align/returning", RETURNING_ORDER);
                 }
                 else
                 {
                     if (false)
                     {}
+                    //check if the marker has left our f.o.v. for a long time
                     /*
-                    if ((ros::Time::now().toSec() - time1_.toSec()) > 0.1) //check if the marker has left our f.o.v.
+                    if ((ros::Time::now().toSec() - time1_.toSec()) > 0.1) 
                     {
                         MARKER_FOUND = 0;
                         previous_direction_ = current_direction_;
@@ -473,11 +476,14 @@ class coffee_manager
     void checkDelivery(ros::NodeHandle& n_)
     {
         ROS_INFO("checkDelivery");
+        ROS_INFO("RETURNING ORDER : %d", RETURNING_ORDER);
+        ROS_INFO("DESTINATION REACHED: %d", DESTINATION_REACHED);
         if ((n_.getParam("/align/returning", RETURNING_ORDER)) && (n_.getParam("/align/destination_reached", DESTINATION_REACHED)))
         {
             if ((RETURNING_ORDER==1) && (DESTINATION_REACHED == 1))
             {
                 ROS_INFO("ORDER SUCCESSFULLY DELIVERED, WAITING FOR NEW ORDER");
+                ros::Duration(5.0).sleep();
                 DESTINATION_SET = 0;
                 DESTINATION_REACHED = 0;
                 ORDER_CANCELLED = 0;
@@ -525,7 +531,7 @@ class coffee_manager
         ROS_INFO("STARTING ALIGNMENT");
         cout<<"Starting Alignment"<<endl;
         ros::Duration(0.01).sleep();
-        
+        ROS_INFO("STARTING ORDER_GIVEN : %d", ORDER_GIVEN);
         //client for connecting to valve
         while(ros::ok())
         {
