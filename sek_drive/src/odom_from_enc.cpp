@@ -123,14 +123,14 @@ void calcOdom()
         
         renc_prev = renc;
         lenc_prev = lenc;
-        ROS_INFO("diff_lenc : %d     diff_renc : %d",diff_lenc ,diff_renc);
+        //ROS_INFO("diff_lenc : %d     diff_renc : %d",diff_lenc ,diff_renc);
         double l_w = diff_lenc * 2.0 * M_PI / (double)encoder_cpr / delta_time;
         double r_w = diff_renc * 2.0 * M_PI / (double)encoder_cpr / delta_time;
-        ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
+        //ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
         
         double l_v = l_w * DIAMETER / 2.0;
         double r_v = r_w * DIAMETER / 2.0;
-        ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
+        //ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
         double v = (l_v + r_v) / 2.0;
         //ROS_INFO("V AFTER : %f",v);
         double w = (r_v - l_v) / WHEEL_BASE_WIDTH;

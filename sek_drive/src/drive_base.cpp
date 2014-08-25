@@ -11,10 +11,10 @@
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
-
-#include "std_msgs/MultiArrayLayout.h"
-#include "std_msgs/MultiArrayDimension.h"
-#include "std_msgs/Int32MultiArray.h"
+//XARALAMPOS
+#include <std_msgs/Int32MultiArray.h>
+std_msgs::Int32MultiArray motor_commands;
+//
 
 #include <tf/transform_broadcaster.h>
 #include "robodev.cpp"
@@ -26,8 +26,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <cmath> 
-
-//#include <boost/thread.hpp>
 
 using namespace std;
 
@@ -138,13 +136,16 @@ void recManCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& ms
 }
 
 void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
-{   
+{
     if(MODE == 1)
     {
+        //TODO http://www.dandwiki.com/wiki/SRD:Find_the_Path
         return ;
     } 
-    if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
+    else
     {
+    if((msg->axes[5]!=0)||(msg->axes[6]!=0)||(msg->axes[0]!=0)||(msg->axes[1]!=0)||(msg->axes[4]!=0)||(msg->axes[3]!=0))
+    {   
         cout<<"if"<<endl;
         //ROS_INFO("HEAR HEAR");
         if(msg->axes[6]==1)//MPROS-PISW
@@ -250,6 +251,9 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         device.SetCommand(_GO,2, LM);//LEFT
         cout<<"LEFT MOTOR :"<< LM<<endl;
         cout<<"RIGHT MOTOR :"<<RM<<endl;
+        motor_commands.data.clear();
+        motor_commands.data.push_back(RM);
+        motor_commands.data.push_back(LM);
         //calcOdom();
         if(msg->buttons[0]==1)
         {
@@ -260,17 +264,19 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
         if(msg->buttons[3]==1)
         {
             ROS_INFO("SAVING MAP as \"mymap\"");
-            system("rosrun map_server map_saver -f mymap &");
+            system("rsrun map_server map_saver -f mymap &");
         }
     }
-    
     else 
     {
         cout<<"else"<<endl;
         //system("killall -9 mplayer");
         device.SetCommand(_GO,1, 0);// RIGHT
         device.SetCommand(_GO,2, 0);//LEFT
-        
+        motor_commands.data.clear();
+        motor_commands.data.push_back(0);
+        motor_commands.data.push_back(0);
+        /*
         if((msg->buttons[11])==1)//&&(msg->buttons[9]!=1))
         {
             if (SCAN_RECORD==0)
@@ -294,6 +300,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
             ros::Duration(2).sleep();
             //system("killall -9 mplayer");
         }
+        */
         if(msg->buttons[1]==1)
         {
             system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
@@ -424,8 +431,7 @@ void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
     }
     //cout<<"RENC : "<<renc<<endl;
     //cout<<"LENC : "<<lenc<<endl;
-    cout<<"LEFT MOTOR :"<< LM<<endl;
-    cout<<"RIGHT MOTOR :"<<RM<<endl;
+}
 }
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg2)
@@ -647,7 +653,7 @@ cout<<"RIGHT MOTOR :"<<RM<<endl;
 
 void calcOdom()
 {   
-     if((device.GetValue(_S, 1, lenc)!=RQ_SUCCESS)||(device.GetValue(_S, 2, renc)!=RQ_SUCCESS))
+    /*if((device.GetValue(_S, 1, lenc)!=RQ_SUCCESS)||(device.GetValue(_S, 2, renc)!=RQ_SUCCESS))
     {
         ROS_INFO("Encoder data decoding failed\n");
         return;
@@ -658,7 +664,7 @@ void calcOdom()
         return;
     }
     ROS_INFO("ODOM LENC : %d",lenc);
-    ROS_INFO("ODOM RENC : %d",lenc);
+    ROS_INFO("ODOM RENC : %d",lenc);*/
 }
 
 void alignCallback(const std_msgs::Int32MultiArray::ConstPtr& array)
@@ -696,6 +702,11 @@ int main(int argc, char *argv[])
     //ros::Subscriber sub3 =  n.subscribe("amcl_pose", 1, recManCallback);
     ros::Subscriber sub3 = n.subscribe("motor_commands", 1, alignCallback);
     ros::Publisher pub1 = n.advertise<nav_msgs::Path>("sent_path", 50);
+    //XARALAMPOS
+    ros::Publisher pub2 = n.advertise<std_msgs::Int32MultiArray>("xar_odom", 1000);
+    motor_commands.data.push_back(0);
+    motor_commands.data.push_back(0);
+    //
     //ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("odom", 50);
     tf::TransformBroadcaster odom_broadcaster;
     
@@ -749,8 +760,8 @@ int main(int argc, char *argv[])
             pub1.publish(path_to_send);
             PLAYING = 0;
         }
-        
-     }   
+        pub2.publish(motor_commands);
+    }   
     device.Disconnect();
     return 0;
 }

@@ -52,6 +52,8 @@ class coffee_manager
         int RETURNING_ORDER;
         double XY_THRES;
         double YAW_THRES;
+        int FORW_SPEED ;
+        int TURN_SPEED ;
         double RM, LM;
         double roll, pitch, yaw;
         tf::Quaternion rotation_quat_;
@@ -72,7 +74,7 @@ class coffee_manager
     
     coffee_manager (ros::NodeHandle& n): n_(n), current_direction_(3), previous_direction_(3),
         ORDER_CANCELLED(0), ORDER_COMPLETED(0), ORDER_GIVEN(0), ORDER_UNDER_PROCCESS(0), MARKER_FOUND(0), SEARCHING(0),
-        ALIGNING(0), CUP_FILLED(0), DESTINATION_REACHED(0), DESTINATION_SET(0), RETURNING_ORDER(0), XY_THRES(0.3), YAW_THRES(0.5), RM(0), LM(0),
+        ALIGNING(0), CUP_FILLED(0), DESTINATION_REACHED(0), DESTINATION_SET(0), RETURNING_ORDER(0), XY_THRES(0.3), YAW_THRES(0.02), FORW_SPEED(0), TURN_SPEED(0), RM(0), LM(0),
         cof_x_(0), cof_y_(0), cof_or_w(0), cof_or_z(0), roll(0), pitch(0), yaw(0)
     {}
     
@@ -85,19 +87,49 @@ class coffee_manager
     
     void markerCallback(const sek_drive::ARMarker::ConstPtr marker_)
     {
-        ROS_INFO("markerCallback");
-        ros::Duration(1.0).sleep();
-        marker_pose = marker_->pose;
-        //tf::quaternionMsgToTF(marker_->pose.pose.orientation, target_quat_);
-        if (CUP_FILLED == 0 )
+        if (CUP_FILLED == 0)
+    {
+        if ((marker_pose.pose.position.z < 2.5) && (marker_pose.pose.position.z > 1.5))
         {
-            if (MARKER_FOUND == 0)
-            {
-                ROS_INFO("MARKER FOUND");
-            }
+            YAW_THRES = 0.40;
+            FORW_SPEED = 180;
+            TURN_SPEED = 140;
+            //ROS_INFO("MARKER FOUND");
             MARKER_FOUND = 1;
         }
-        time1_ = ros::Time::now();
+        else if ((marker_pose.pose.position.z < 1.5) && (marker_pose.pose.position.z > 1.0))
+        {
+            YAW_THRES = 0.15;
+            FORW_SPEED = 140;
+            TURN_SPEED = 100;
+            //ROS_INFO("MARKER FOUND");
+            MARKER_FOUND = 1;
+        }
+        else if (marker_pose.pose.position.z > 0.8)
+        {
+            YAW_THRES = 0.02;
+            FORW_SPEED = 80;
+            TURN_SPEED = 80;
+            //ROS_INFO("MARKER FOUND");
+            MARKER_FOUND = 1;
+        }
+    }
+    //tf::quaternionMsgToTF(marker_->pose.pose.orientation, target_quat_);
+    /*
+    if (CUP_FILLED == 0 )
+    {
+        if ((MARKER_FOUND == 0) && (marker_pose.pose.position.z < 1.0))
+        {
+            ROS_INFO("MARKER FOUND");
+            MARKER_FOUND = 1;
+        }
+    }
+    */
+    else
+    {
+        MARKER_FOUND==0;
+    }
+    time1_ = ros::Time::now();
         return;
     }
 
@@ -235,7 +267,6 @@ class coffee_manager
     
     void fillCup(ros::NodeHandle& n_)
     {
-        ROS_INFO("fillCup");
         int sock, lele, tmp;
         struct sockaddr_in server; 
         struct hostent *hp;
@@ -243,58 +274,54 @@ class coffee_manager
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock <0) {
             perror("SOCKET FAILED");
-            return;
+            return ;
         }
         server.sin_family=AF_INET;
-        if(inet_pton(AF_INET, "192.168.88.201", &server.sin_addr)<=0)
+        if(inet_pton(AF_INET, "192.168.88.230", &server.sin_addr)<=0)
         {
             printf("\n inet_pton error occured\n");
-            return;
+            return ;
         }
-        server.sin_port=htons(1234);
+        server.sin_port=htons(8081);
         if (connect(sock, (struct sockaddr *) &server, sizeof(server)) < 0) {
             perror("connect failed");
             close(sock);
-            return;
+            return ;
             }
         while (1) 
         {
-            printf("Please enter the message: ");
-            bzero(buff,256);
-            fgets(buff,255,stdin);
-            //cout <<endl << "about to send" << buff << endl;
-            //tmp = htonl(1);
-            lele = write(sock, buff, strlen(buff));
-            //lele = send(sock, (char*)msg, sizeof(msg), 0);
-            //cout << "sent " << endl;
-            ros::Duration(3.0).sleep();
+            //printf("Please enter the message: ");
+            //bzero(buff,256);
+            //fgets(buff,255,stdin);
+            cout <<endl << "about to send 1" << endl;
+            string data = "0";
+            lele = write(sock, data.c_str(), strlen(data.c_str()));
             if (lele < 0) 
             {
                 perror("ERROR writing to socket");
-                return;
+                return ;
             }
             bzero(buff,1);
             cout <<"reading" << endl;
-            lele = read(sock, buff, 1);
+            lele = read(sock, buff, 256);
             cout << "read :" << buff << endl;
             if (lele < 0)
             {
                 perror("ERROR reading from socket");
-                return;
+                return ;
             }
-            if(atoi(buff)==0)
+            printf(" Got %s /n", buff);
+            if(string(buff)=="theend")
             {
                 cout << "CUP FILLED" << endl;
-                CUP_FILLED = 1;
-                ALIGNING = 0;
-                DESTINATION_REACHED = 0;
-                n_.setParam("/align/cup_filled", 1);
-                n_.setParam("/align/aligning", 0);
-                n_.setParam("/align/destination_reached", 0);
                 close(sock);
-                return;
+                return ;
             }
-            ros::Duration(1.0).sleep();
+            else
+            {
+                printf("Gor Wrong Signal /n");
+                return ;
+            }
         } 
         //printf("Sent %s\n", buff);
         close(sock);
@@ -339,10 +366,10 @@ class coffee_manager
                     motorPub.publish(motor_commands);
                     motor_commands.data.clear();
                     ROS_INFO("FILLING CUP");
-                    fillCup(n_);
+                    //fillCup(n_);
                     ROS_INFO("Cup full, returning to client");
                     ros::Duration(1.0).sleep();
-                    
+                    return;
                     // The robot has completed the interaction with the valve
                     // it should head back to the client
                     
@@ -373,7 +400,7 @@ class coffee_manager
                     */
                     else
                     {
-                        if ((marker_pose.pose.position.x < 0.005) && (marker_pose.pose.position.x > -0.005))
+                        if ((marker_pose.pose.position.x < 0.02) && (marker_pose.pose.position.x > -0.02))
                         //if ((marker_pos_x_ < 0.005) && (marker_pos_x_ > -0.005))
                         {
                             if (previous_direction_==3 && current_direction_==3)
@@ -381,8 +408,8 @@ class coffee_manager
                                 ROS_INFO("CENTERED AR MARKER");
                                 previous_direction_ = 0 ;
                                 current_direction_ = 0;
-                                motor_commands.data.push_back(-160);
-                                motor_commands.data.push_back(160);
+                                motor_commands.data.push_back(-FORW_SPEED);
+                                motor_commands.data.push_back(FORW_SPEED);
                                 ROS_INFO("MOVING FORWARD");
                                 motorPub.publish(motor_commands);
                                 motor_commands.data.clear();
@@ -390,34 +417,44 @@ class coffee_manager
                             else
                             {
                                 current_direction_ = 0;
-                                if ((marker_pose.pose.position.z > 0.30) && (current_direction_ != previous_direction_))
+                                if ((marker_pose.pose.position.z > 0.40) && (current_direction_ != previous_direction_))
                                 //if( (marker_pos_z_ > 0.30) && (current_direction_ != previous_direction_))
                                 {
                                     previous_direction_ = current_direction_;
                                     ROS_INFO("CENTERED AR MARKER");
-                                    motor_commands.data.push_back(-160);
-                                    motor_commands.data.push_back(160);
+                                    motor_commands.data.push_back(-FORW_SPEED);
+                                    motor_commands.data.push_back(FORW_SPEED);
                                     ROS_INFO("MOVING FORWARD");
                                     motorPub.publish(motor_commands);
                                     motor_commands.data.clear();
                                 }
+                                else if (marker_pose.pose.position.z <= 0.40)
+                                {
+                                    ROS_INFO("IN POSITION");
+                                    motor_commands.data.push_back(0);
+                                    motor_commands.data.push_back(0);
+                                    motorPub.publish(motor_commands);
+                                    motor_commands.data.clear();
+                                    ros::Duration(10.0).sleep();
+                                    return;
+                                }
                             }
                         }
-                        else if (marker_pose.pose.position.x < - 0.005)
+                        else if (marker_pose.pose.position.x < - YAW_THRES)
                         //else if (marker_pos_x_ < -0.005) //marker is at the right side of the camera
                         {
                             current_direction_ = -1;
                             if (current_direction_ != previous_direction_)
                             {
                                 previous_direction_ = current_direction_ ;
-                                motor_commands.data.push_back(-120);
-                                motor_commands.data.push_back(-120);
+                                motor_commands.data.push_back(-TURN_SPEED);
+                                motor_commands.data.push_back(-TURN_SPEED);
                                 ROS_INFO("ROTATING LEFT TO ALIGN");
                                 motorPub.publish(motor_commands);
                                 motor_commands.data.clear();
                             }
                         }
-                        else if (marker_pose.pose.position.x > 0.005)
+                        else if (marker_pose.pose.position.x > YAW_THRES)
                         //else if (marker_pos_x_ > 0.005) //marker is at the left of the camera
                         {
                             current_direction_ = 1;
@@ -425,8 +462,8 @@ class coffee_manager
                             {
                                 previous_direction_ = current_direction_ ;
                                 //current_direction_ = 1;
-                                motor_commands.data.push_back(120);
-                                motor_commands.data.push_back(120);
+                                motor_commands.data.push_back(TURN_SPEED);
+                                motor_commands.data.push_back(TURN_SPEED);
                                 ROS_INFO("ROTATING RIGHT TO ALIGN");
                                 motorPub.publish(motor_commands);
                                 motor_commands.data.clear();
@@ -450,8 +487,8 @@ class coffee_manager
                     robot_quat_rotated_.setZ(-robot_quat_rotated_.getZ());
                     ROS_INFO("YAW = %f", yaw);
                     //ros::Duration(5.0).sleep();
-                    motor_commands.data.push_back(-120);
-                    motor_commands.data.push_back(-120);
+                    motor_commands.data.push_back(-80);
+                    motor_commands.data.push_back(-80);
                     ROS_INFO("SEARCHING FOR MARKER");
                     motorPub.publish(motor_commands);
                     motor_commands.data.clear();
@@ -461,8 +498,8 @@ class coffee_manager
                     //rotate right
                     ROS_INFO("YAW = %f", yaw);
                     //ros::Duration(5.0).sleep();
-                    motor_commands.data.push_back(120);
-                    motor_commands.data.push_back(120);
+                    motor_commands.data.push_back(80);
+                    motor_commands.data.push_back(80);
                     ROS_INFO("SEARCHING FOR MARKER");
                     motorPub.publish(motor_commands);
                     motor_commands.data.clear();
@@ -482,6 +519,7 @@ class coffee_manager
         {
             if ((RETURNING_ORDER==1) && (DESTINATION_REACHED == 1))
             {
+                n_.setParam("/check_for_client",0);
                 ROS_INFO("ORDER SUCCESSFULLY DELIVERED, WAITING FOR NEW ORDER");
                 ros::Duration(5.0).sleep();
                 DESTINATION_SET = 0;
@@ -542,6 +580,8 @@ class coffee_manager
             //ros::Duration(3.0).sleep();
             //PART FOR ALIGNING WITH MARKER
             alignWithMarker(n_, pub1_, pub2_);
+            fillCup(n_);
+            return ;
             checkDelivery(n_);
         }
     }

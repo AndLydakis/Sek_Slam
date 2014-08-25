@@ -13,7 +13,7 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/Pose2D.h>
-
+#include <sek_drive/encoders.h>
 #include "std_msgs/MultiArrayLayout.h"
 #include "std_msgs/MultiArrayDimension.h"
 #include "std_msgs/Int32MultiArray.h"
@@ -41,34 +41,39 @@ using namespace std;
 #define DIAMETER 0.1524 //m,6 INCHES
 #define WHEEL_BASE_WIDTH 0.40 //m,  
 #define TWOPI /*360*/6.2831853070
+#define M_PI 3.14159265358979323846  /* pi */
 #define RADS 57.2958
 #define MAX_SPEED 1000 //command
-#define MAX_SPEED_LIMIT 0.75
-#define MAX_LIN_VEL  2
-#define MIN_LIN_VEL  -2
-#define MAX_ROT_VEL  4
-#define MIN_ROT_VEL  -4
 #define ACCELERATION 80
+/*
+  max_vel_x: 0.31416
+  #1.9974 
+  min_vel x: 0.04
+  #NOT REVERSE SPEED MUST BE POSITIVE
+  #-2.08721
+  max_rotational_vel: 1.5708
+  min_in_place_rotational_vel: 1.0
+ */
 /////////////////
 int ESD = 0; //emergency shutdown signal
-int MODE = 0; //Assistive or nope
 int REC = 0;
 int FIRST_POSE_SET = 0;
 int PLAYING = 0;
 int CAMERA_ON = 0;
 int SCAN_RECORD = 0;
 int ALLIGNING = 0;
+int ODOMETRY_MODE = 1; //1 for tick count, 2 for RPM count
+int PUB_TF = 1;
+int PUB_ODOM = 1;
+int RECORDING = 1;
 
-struct pose_coords
-{
-    float x;
-    float y;
-    float w;
-};
+double MAX_LIN_VEL = 0.31416;
+double MIN_LIN_VEL = 0.04;
+double MAX_ROT_VEL = 1.5708;
+double MIN_ROT_VEL = 1.0;
+double MAX_SPEED_LIMIT;
+double RC_MAX_SPEED_LIMIT;
 
-struct pose_coords first_pose;
-std::vector<pose_coords> pose_vector;
-std::vector<pose_coords> pose_vector_to_use;
 nav_msgs::Path path_to_send;
 ////////////////////////////
 
@@ -76,7 +81,7 @@ int encoder_ppr = 920;
 int encoder_cpr;
 int LM = 0;
 int RM = 0;
-int lenc = 0, renc = 0, lenc_prev = 0, renc_prev = 0, lenc_init = 0, renc_init = 0, enc_errors = 0, lenc_2, renc_2;
+int lenc = 0, renc = 0, lenc_prev = 0, renc_prev = 0, lenc_init = 0, renc_init = 0, enc_errors = 0, lenc2, renc2;
 int MXRPM ;
 int imu_counter = 0;
 double xx = 0, yy = 0, tt = 0;
@@ -90,8 +95,11 @@ RoboteqDevice device;
 
 ros::Time prev_time, current_time, enc_loop_time, bat_loop_time, tf_loop_time, mot_loop_time, imu_cur_time, imu_prev_time;
 ros::Publisher odom_pub;
+ros::Publisher encoder_pub;
+ros::Publisher encoder_pub_ticks;
 ros::Publisher pose_pub;
 ros::Publisher pose_pub2;
+ros::Subscriber encoder_sub;
 tf::TransformBroadcaster *odom_broadcaster;
 geometry_msgs::Quaternion q_imu = tf::createQuaternionMsgFromYaw(0);
 
@@ -119,6 +127,15 @@ void queryBat()
     else 
     {
         //ROS_INFO("BATTERY LEVEL : %d", battery_lvl/10);
+    }
+}
+
+void encoderCallback(const sek_drive::encoders::ConstPtr& msg)
+{
+    if (RECORDING == 1)
+    {
+        renc = msg->right_wheel;
+        lenc = msg->left_wheel;
     }
 }
 
@@ -171,37 +188,6 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& msg)
     //ROS_INFO("imu yaw:%f",tf::getYaw(msg->orientation));
 }
 
-void readEnc2()
-{
-    int status;
-    //READ ABSOLUTE RPM VALUE
-    if((status = device.GetValue(_ABSPEED, 1, renc_2)) !=RQ_SUCCESS)
-    {
-        cout<<"failed -->"<<status<<endl;
-        ros::Duration(5.0).sleep();
-        enc_errors++;
-    }
-    else
-    {
-        //cout<<"Right Motor Encoder : "<<renc<<endl;
-        ros::Duration(0.01).sleep();
-    }
-    if((status = device.GetValue(_ABSPEED, 2, lenc_2)) !=RQ_SUCCESS)
-    {
-        cout<<"failed -->"<<status<<endl;
-        ros::Duration(5.0).sleep();
-        enc_errors++;
-    }
-    else
-    {
-        //cout<<"Left Motor Encoder : "<<lenc<<endl;
-        ros::Duration(0.01).sleep();
-    }
-    
-    motor_commands.data.clear();
-    motor_commands.data.push_back(-renc_2);
-    motor_commands.data.push_back(lenc_2);
-}
 
 void readEnc()
 {
@@ -212,68 +198,81 @@ void readEnc()
     ros::Time now = ros::Time::now();
     double delta = (now - prev_time).toSec();
     
-    //READ MOTOR POSITION 
-    if((status = device.GetValue(_C, 1, renc)) !=RQ_SUCCESS)
+    //READ MOTOR POSITION
+    if(ODOMETRY_MODE==1) 
     {
-        cout<<"failed -->"<<status<<endl;
-        ros::Duration(5.0).sleep();
-        enc_errors++;
+        if((status = device.GetValue(_C, 1, renc)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+            enc_errors++;
+        }
+        else
+        {
+            //cout<<"Right Motor Encoder : "<<renc<<endl;
+            //ros::Duration(0.1).sleep();
+        }
+        if((status = device.GetValue(_C, 2, lenc)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+            enc_errors++;
+        }
+        else
+        {
+            //cout<<"Left Motor Encoder : "<<lenc<<endl;
+            //ros::Duration(0.1).sleep();
+        }
+
+        renc=-renc;
+        lenc = lenc - lenc_init;
+        renc = renc - renc_init;
+        sek_drive::encoders encoder_ticks;
+        encoder_ticks.header.stamp = now;
+        encoder_ticks.header.frame_id = "base_link";
+        encoder_ticks.time_delta = delta;
+        encoder_ticks.left_wheel = lenc;
+        encoder_ticks.right_wheel = -renc;
+        encoder_pub_ticks.publish(encoder_ticks);
     }
     else
     {
-        //cout<<"Right Motor Encoder : "<<renc<<endl;
-        //ros::Duration(0.1).sleep();
-    }
-    if((status = device.GetValue(_C, 2, lenc)) !=RQ_SUCCESS)
-    {
-        cout<<"failed -->"<<status<<endl;
-        ros::Duration(5.0).sleep();
-        enc_errors++;
-    }
-    else
-    {
-        //cout<<"Left Motor Encoder : "<<lenc<<endl;
-        //ros::Duration(0.1).sleep();
-    }
-    
-    renc=-renc;
-    lenc = lenc - lenc_init;
-    renc = renc - renc_init;
-    
-}
-void teleopCallback(const sensor_msgs::Joy::ConstPtr& msg)
-{
-    //ROS_INFO("lelelelel");
-    int status;
-    LM = msg->axes[1]*1000;
-    RM = -msg->axes[3]*1000;
-    device.SetCommand(_GO,1, RM);// RIGHT
-    ros::Duration(0.01).sleep(); //sleep for 10 ms
-    device.SetCommand(_GO,2, LM);//LEFT
-    ros::Duration(0.01).sleep();
-    if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
-    {
-        cout<<"failed --> "<<status<<endl;
-        ros::Duration(5.0).sleep();
-    }
-    else
-    {
-        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
-    }
-    if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
-    {
-        cout<<"failed -->"<<status<<endl;
-        ros::Duration(5.0).sleep();
-    }
-    else
-    {
-        //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+        if((status = device.GetValue(_ABSPEED, 1, renc2)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+            enc_errors++;
+        }
+        else
+        {
+            //cout<<"Right Motor Encoder : "<<renc<<endl;
+            ros::Duration(0.01).sleep();
+        }
+        if((status = device.GetValue(_ABSPEED, 2, lenc2)) !=RQ_SUCCESS)
+        {
+            cout<<"failed -->"<<status<<endl;
+            ros::Duration(5.0).sleep();
+            enc_errors++;
+        }
+        else
+        {
+            //cout<<"Left Motor Encoder : "<<lenc<<endl;
+            ros::Duration(0.01).sleep();
+        }
+        sek_drive::encoders encoder_msg;
+        encoder_msg.header.stamp = now;
+        encoder_msg.header.frame_id = "base_link";
+        encoder_msg.time_delta = delta;
+        encoder_msg.left_wheel = lenc2;
+        encoder_msg.right_wheel = renc2;
+        encoder_pub.publish(encoder_msg);
     }
 }
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
 {   
     int status;
+    /*
     if (ESD = 1)
     {
         if((status = device.SetCommand(_GO, 2,  0) != RQ_SUCCESS))
@@ -297,6 +296,7 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
         }
         return;
     }
+    */
     //SCALE VELOCITIES TO MOTOR COMMANDS
     double L_V = (-1 * (1 - ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))  +
             ((msg->linear.x - ((-0.66666666))) / (0.66666666 - ( - 0.66666666))))*1000;
@@ -421,6 +421,34 @@ void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
     
 }
 
+void cmdVelCallback_2(const geometry_msgs::Twist::ConstPtr& msg)
+{
+    int status;
+    double vx, va;
+    vx = (-1 * (1 - ((msg->linear.x - ((-MAX_LIN_VEL))) / (MAX_LIN_VEL - ( - MAX_LIN_VEL))))  +
+            ((msg->linear.x - ((-MAX_LIN_VEL))) / (MAX_LIN_VEL - ( - MAX_LIN_VEL))))*(MAX_SPEED)*(MAX_SPEED_LIMIT);
+    va = (-1 * (1 - ((msg->angular.z - ((-MAX_ROT_VEL))) / (MAX_ROT_VEL - ( - MAX_ROT_VEL))))  +
+            ((msg->angular.z - ((-MAX_ROT_VEL))) / (MAX_ROT_VEL - ( - MAX_ROT_VEL))))*(MAX_SPEED)*(MAX_SPEED_LIMIT);
+    LM = (vx - va*WHEEL_BASE_WIDTH/2);
+    RM = -(vx + va*WHEEL_BASE_WIDTH/2);
+    
+    ROS_INFO("RM : %d", RM);
+    ROS_INFO("LM : %d", LM);
+    if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS) //right motor
+    {
+        cout<<"motor command M1 failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+    else
+    {
+        //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+    }
+    if((status = device.SetCommand(_GO,2, LM)) != RQ_SUCCESS) //left motor
+    {
+        cout<<"motor command M1 failed --> "<<status<<endl;
+        ros::Duration(5.0).sleep();
+    }
+}
 void motorCommandCallback(const std_msgs::Int32MultiArray::ConstPtr& motor_comms)
 {
     int status;
@@ -443,7 +471,6 @@ void motorCommandCallback(const std_msgs::Int32MultiArray::ConstPtr& motor_comms
         //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
     }
 }
-
 
 void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
 {
@@ -563,13 +590,13 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
          * CHANGES MUST BE ALSO MADE IN THE AMCL CONFIG FILES
          * FOR THE NAVIGATION PACKAGE
         */
-        if(abs(LM) > 750)
+        if(abs(LM) > (MAX_SPEED*MAX_SPEED_LIMIT))
         {
-            LM = (LM/abs(LM)) * MAX_SPEED * MAX_SPEED_LIMIT;
+            LM = (LM/abs(LM)) * MAX_SPEED * RC_MAX_SPEED_LIMIT;
         }
-        if(abs(RM) > 750)
+        if(abs(RM) > (MAX_SPEED*MAX_SPEED_LIMIT))
         {
-            RM = (RM/abs(RM)) * MAX_SPEED * MAX_SPEED_LIMIT;
+            RM = (RM/abs(RM)) * MAX_SPEED * RC_MAX_SPEED_LIMIT;
         }
         if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
         {
@@ -612,6 +639,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
         }
         if(msg->buttons[1]==1)//CIRCLE BUTTON
         {
+            //ROS_INFO("HEHEHEHEHEHEHEHEHHEHE");
             system("rostopic pub -1 move_base/cancel actionlib_msgs/GoalID '{}' &");
         }
         if(msg->buttons[3]==1)//SQUARE BUTTON
@@ -658,8 +686,8 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
             {
                 REC=0;
                 ROS_INFO("Stop Recording");
-                pose_vector_to_use =  pose_vector;
-                pose_vector.clear();
+                //pose_vector_to_use =  pose_vector;
+                //pose_vector.clear();
                 FIRST_POSE_SET = 0;
                 //system("rosnode kill /maneuvers/record_man &");
                 //ros::Duration(3).sleep();
@@ -674,6 +702,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
                 geometry_msgs::PoseStamped pose_to_add;
                 ROS_INFO("Playing Maneuver");
                 //system("rosbag play /home/skel/.ros/maneuver.bag &");
+                /*
                 for(unsigned i = 0; i < pose_vector.size(); i++)
                 {
                     pose_to_add.pose.position.x = pose_vector[i].x;
@@ -681,6 +710,7 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
                     pose_to_add.pose.orientation.w = pose_vector[i].w;
                     path_to_send.poses.push_back(pose_to_add);
                 }
+                */
             }
         }
         if(msg->buttons[5]==1)//STOP PLAYING //R2
@@ -740,142 +770,165 @@ void teleopCallback2(const sensor_msgs::Joy::ConstPtr& msg)
     }
 }
 
-
 void calcOdom()
 {
-    
     //cout<<"Odometry Callback"<<endl;
     ros::Time now = ros::Time::now();
     double delta_time = (now.toSec() - prev_time.toSec());
     //ROS_INFO("Delta Time : %f",delta_time);
     prev_time = now;
     
-    if (firstOdom)
-    {
-        renc_prev = renc;
-        lenc_prev = lenc;
-    }
-    
-    int diff_lenc = lenc - lenc_prev;
-    int diff_renc = renc - renc_prev;
-    
-    renc_prev = renc;
-    lenc_prev = lenc;
-    
-    double l_w = diff_lenc * 2.0 * PI / (double)encoder_cpr / delta_time;
-    double r_w = diff_renc * 2.0 * PI / (double)encoder_cpr / delta_time;
-    //ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
-    
-    double l_v = l_w * DIAMETER / 2.0;
-    double r_v = r_w * DIAMETER / 2.0;
-    //ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
-    double v = (l_v + r_v) / 2.0;
-    //ROS_INFO("V AFTER : %f",v);
-    double w = (r_v - l_v) / WHEEL_BASE_WIDTH;
-    
     geometry_msgs::Quaternion quat;
     double roll = 0;
     double pitch = 0;
     double yaw = 0;
-    
     tf::Quaternion q;
     tf::quaternionMsgToTF(q_imu, q);
     tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
     
     if (firstOdom)
     {
+        renc_prev = renc;
+        lenc_prev = lenc;
         xx = 0;
         yy = 0;
         tt = 0;
         firstOdom = false;
     }
+    
+    if (ODOMETRY_MODE == 1)
+    {
+        int diff_lenc = lenc - lenc_prev;
+        int diff_renc = renc - renc_prev;
+        
+        renc_prev = renc;
+        lenc_prev = lenc;
+        
+        double l_w = diff_lenc * 2.0 * PI / (double)encoder_cpr / delta_time;
+        double r_w = diff_renc * 2.0 * PI / (double)encoder_cpr / delta_time;
+        //ROS_INFO("L_W : %f     R_W : %f",l_w ,r_w);
+        
+        double l_v = l_w * DIAMETER / 2.0;
+        double r_v = r_w * DIAMETER / 2.0;
+        //ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
+        double v = (l_v + r_v) / 2.0;
+        //ROS_INFO("V AFTER : %f",v);
+        double w = (r_v - l_v) / WHEEL_BASE_WIDTH;
+        
+        if (firstOdom)
+        {
+            xx = 0;
+            yy = 0;
+            tt = 0;
+            firstOdom = false;
+        }
+        tt = tt + w * delta_time;
+        //ROS_INFO("TT BEFORE WRAP : %f",tt);
+        tt = wrapToPi(tt);
+        //ROS_INFO("TT : %f", tt);
+        //ROS_INFO("V BEFORE CREATE QUATERNION : %f",v);
+        //ROS_INFO("TT AFTER WRAP : %f",tt);
+        quat = tf::createQuaternionMsgFromRollPitchYaw(0, 0, tt);
+        
+        //ROS_INFO(" sdfgasdgasdga %f",v*cos(tt));
+        xx = xx + (v * cos(tt)) * delta_time ;
+        yy = yy + (v * sin(tt)) * delta_time;
+        //ROS_INFO("%f   %f",xx ,yy);
+        //ROS_INFO("%f    %f",v ,w);
+        //ROS_INFO("---------");
+        if(PUB_ODOM == 1)
+        {
+            nav_msgs::Odometry odom_msg;
+            //odom_msg.header.stamp = now;
+            odom_msg.header.frame_id = "odom";
+            odom_msg.header.stamp = now;
+            odom_msg.pose.pose.position.x = xx;
+            //ROS_INFO("%f",xx);
+            odom_msg.pose.pose.position.y = yy;
+            //ROS_INFO("%f",yy);
+            odom_msg.pose.pose.position.z = 0;
+            odom_msg.pose.pose.orientation = quat;
+            odom_msg.child_frame_id = "base_link";
+            odom_msg.twist.twist.linear.x = v;
+            odom_msg.twist.twist.linear.y = 0;
+            odom_msg.twist.twist.angular.z = w;
+            
+            odom_msg.pose.covariance[0] = 0.26298481867953083;
+            odom_msg.pose.covariance[1] = -0.007138441796595563;
+            odom_msg.pose.covariance[6] = -0.007138441796595563;
+            odom_msg.pose.covariance[7] = 0.25096033123823897;
+            odom_msg.pose.covariance[14] = 1e100;
+            odom_msg.pose.covariance[21] = 1e100;
+            odom_msg.pose.covariance[28] = 1e100;
+            odom_msg.pose.covariance[35] = 0.06684735983012981;
+            odom_msg.twist.covariance = odom_msg.pose.covariance;
+
+            odom_pub.publish(odom_msg);
+        }
+    }
     else
     {
-        if (!rp_from_imu)
-        {
-            roll = 0 ;
-            pitch = 0;
-        }
-        if (y_from_imu)
-        {
-            tt=wrapToPi(yaw);
-            //ROS_INFO("TT : %f", tt);
-        }
+        double l_v = (2*M_PI*(DIAMETER/2.0)*lenc2)/60;
+        double r_v = (2*M_PI*(DIAMETER/2.0)*renc2)/60;
+        //ROS_INFO("L_V : %f     R_V : %f",l_v ,r_v);
+        double v = (l_v + r_v) / 2.0;
+        //ROS_INFO("V AFTER : %f",v);
+        double w = (r_v - l_v) / WHEEL_BASE_WIDTH;
         
-        else
-        { 
-            tt = tt + w * delta_time;
-            //ROS_INFO("TT BEFORE WRAP : %f",tt);
-            tt = wrapToPi(tt);
-            //ROS_INFO("TT : %f", tt);
-        }
+        tt = tt + w * delta_time;
+        tt = wrapToPi(tt);
+        xx = xx + (v * cos(tt)) * delta_time ;
+        yy = yy + (v * sin(tt)) * delta_time;
         
+        //ROS_INFO("TT BEFORE WRAP : %f",tt);
+        
+        quat = tf::createQuaternionMsgFromRollPitchYaw(wrapToPi(roll), wrapToPi(pitch), tt);
+
+        nav_msgs::Odometry odom_msg;
+        //odom_msg.header.stamp = now;
+        odom_msg.header.frame_id = "odom";
+        odom_msg.header.stamp = now;
+        odom_msg.pose.pose.position.x = xx;
+        //ROS_INFO("%f",xx);
+        odom_msg.pose.pose.position.y = yy;
+        //ROS_INFO("%f",yy);
+        odom_msg.pose.pose.position.z = 0;
+        odom_msg.pose.pose.orientation = quat;
+        odom_msg.child_frame_id = "base_link";
+        odom_msg.twist.twist.linear.x = v;
+        odom_msg.twist.twist.linear.y = 0;
+        odom_msg.twist.twist.angular.z = w;
+        
+        odom_msg.pose.covariance[0] = 0.26298481867953083;
+        odom_msg.pose.covariance[1] = -0.007138441796595563;
+        odom_msg.pose.covariance[6] = -0.007138441796595563;
+        odom_msg.pose.covariance[7] = 0.25096033123823897;
+        odom_msg.pose.covariance[14] = 1e100;
+        odom_msg.pose.covariance[21] = 1e100;
+        odom_msg.pose.covariance[28] = 1e100;
+        odom_msg.pose.covariance[35] = 0.06684735983012981;
+        odom_msg.twist.covariance = odom_msg.pose.covariance;
+
+        odom_pub.publish(odom_msg);
     }
-    //ROS_INFO("V BEFORE CREATE QUATERNION : %f",v);
-    //ROS_INFO("TT AFTER WRAP : %f",tt);
-    quat = tf::createQuaternionMsgFromRollPitchYaw(wrapToPi(roll), wrapToPi(pitch), tt);
     
-    //ROS_INFO(" sdfgasdgasdga %f",v*cos(tt));
-    xx = xx + (v * cos(tt)) * delta_time ;
-    yy = yy + (v * sin(tt)) * delta_time;
-    
-    
-    
-    nav_msgs::Odometry odom_msg;
-    //odom_msg.header.stamp = now;
-    //odom_msg.header.frame_id = "odom";
-    odom_msg.header.stamp = now;
-    odom_msg.pose.pose.position.x = xx;
-    //ROS_INFO("%f",xx);
-    odom_msg.pose.pose.position.y = yy;
-    //ROS_INFO("%f",yy);
-    odom_msg.pose.pose.position.z = 0;
-    odom_msg.pose.pose.orientation = quat;
-    odom_msg.child_frame_id = "base_link";
-    odom_msg.twist.twist.linear.x = v;
-    odom_msg.twist.twist.linear.y = 0;
-    odom_msg.twist.twist.angular.z = w;
 
-    odom_msg.pose.covariance[0] = 0.26298481867953083;
-    odom_msg.pose.covariance[1] = -0.007138441796595563;
-    odom_msg.pose.covariance[6] = -0.007138441796595563;
-    odom_msg.pose.covariance[7] = 0.25096033123823897;
-    odom_msg.pose.covariance[14] = 1e100;
-    odom_msg.pose.covariance[21] = 1e100;
-    odom_msg.pose.covariance[28] = 1e100;
-    odom_msg.pose.covariance[35] = 0.06684735983012981;
-    odom_msg.twist.covariance = odom_msg.pose.covariance;
-
-    odom_pub.publish(odom_msg);
     
+    if (PUB_TF == 1)
+    {
     //Add TF broadcaster
-    geometry_msgs::TransformStamped odom_trans;
-    odom_trans.header.stamp = now;
-    odom_trans.header.frame_id = "odom";
-    odom_trans.child_frame_id = "base_link";
-    odom_trans.transform.translation.x = xx;
-    odom_trans.transform.translation.y = yy;
-    odom_trans.transform.translation.z = 0.0;
-    odom_trans.transform.rotation = quat;
-    //odom_broadcaster->sendTransform(odom_trans);
-    
-    geometry_msgs::PoseStamped::Ptr pose_st_msg;
-    pose_st_msg = boost::make_shared<geometry_msgs::PoseStamped>();
-    pose_st_msg->header.stamp = now;
-    pose_st_msg->header.frame_id = "odom";
-            
-            
-    pose_st_msg->pose.position.x = xx;
-    pose_st_msg->pose.position.y = yy;
-    pose_st_msg->pose.position.z = 0;
-    pose_st_msg->pose.orientation = odom_trans.transform.rotation;
-            
-    //tf::poseTFToMsg(odom_trans, pose_st_msg->pose);
-    
-    pose_pub2.publish(pose_st_msg);
+        geometry_msgs::TransformStamped odom_trans;
+        odom_trans.header.stamp = now;
+        odom_trans.header.frame_id = "odom";
+        odom_trans.child_frame_id = "base_link";
+        odom_trans.transform.translation.x = xx;
+        odom_trans.transform.translation.y = yy;
+        odom_trans.transform.translation.z = 0.0;
+        odom_trans.transform.rotation = quat;
+        odom_broadcaster->sendTransform(odom_trans);
+    }
 }
     
-
 int main(int argc, char *argv[])
 {   
     int status = device.Connect("/dev/ttyACM1");
@@ -891,26 +944,31 @@ int main(int argc, char *argv[])
     ros::init(argc, argv, "move_script");
     ros::NodeHandle n;
     
+    n.getParam("test_motors/odom_mode", ODOMETRY_MODE);
+    n.getParam("test_motors/pub_tf", PUB_TF);
+    n.getParam("test_motors/pub_odom", PUB_ODOM);
+    n.getParam("test_motors/max_speed_lim", MAX_SPEED_LIMIT);
+    n.getParam("test_motors/rc_max_speed_lim", RC_MAX_SPEED_LIMIT);
+    
+    ROS_INFO("Odometry Mode : %d", ODOMETRY_MODE);
+    ROS_INFO("Publish TF : %d", PUB_TF);
+    ROS_INFO("Publish Odometry Messages : %d", PUB_ODOM);
+    ROS_INFO("Max Speed %% Limit : %f", MAX_SPEED_LIMIT);
     prev_time = ros::Time::now();
     
     imu_prev_time = ros::Time::now();
     
     ros::Duration(0.1).sleep();
     odom_broadcaster = new tf::TransformBroadcaster;
-    odom_pub = n.advertise < nav_msgs::Odometry > ("/odom", 10);
+    odom_pub = n.advertise<nav_msgs::Odometry > ("/odom", 10);
+    encoder_pub = n.advertise<sek_drive::encoders>("/encoders", 10);
+    encoder_pub_ticks = n.advertise<sek_drive::encoders>("/encoder_ticks", 10);
     pose_pub2 = n.advertise<geometry_msgs::PoseStamped>("/poseStamped",5);
     
     ros::Subscriber sub = n.subscribe("/joy", 1, teleopCallback2);
     ros::Subscriber imu_sub = n.subscribe("/imu/data", 10, imuCallback);
     ros::Subscriber align_sub = n.subscribe("/motor_commands", 1, alignCallback);
-    ros::Subscriber cmd_vel_sub = n.subscribe("/cmd_vel", 100, cmdVelCallback);
-    //ros::Subscriber laser_sub = n.subscribe("/esd", 100, laserCallback);
-    
-    //XARALAMPOS
-    ros::Publisher pub2 = n.advertise<std_msgs::Int32MultiArray>("/xar_odom", 1000);
-    motor_commands.data.push_back(0);
-    motor_commands.data.push_back(0);
-    //
+    ros::Subscriber cmd_vel_sub = n.subscribe("cmd_vel", 100, cmdVelCallback_2);
     
     //ROS_INFO("- SetConfig(_DINA, 1, 1)...");
     if((status = device.SetConfig(_DINA, 1, 1)) != RQ_SUCCESS)
@@ -962,33 +1020,15 @@ int main(int argc, char *argv[])
     ros::Duration(0.01).sleep(); //sleep for 10 ms
     while (ros::ok())
     {
-        if (ESD == 1)
-        {
-            ROS_INFO("ESD engaged");
-            ros::Duration(5).sleep();
-            break;
-        }
-        
         ros::spinOnce();
         current_time = ros::Time::now();
-        //XARALAMPOS
-        /*
-        readEnc2();
-        pub2.publish(motor_commands);
-        */
-        if ((current_time.toSec() - enc_loop_time.toSec())>=0.1)
+        if ((current_time.toSec() - enc_loop_time.toSec())>=0.2)
         {
             readEnc();
             calcOdom();
             //pub2.publish(motor_commands);
             enc_loop_time = current_time;
         }
-        //if ((current_time.toSec() - bat_loop_time.toSec())>=1)
-        //{
-        //    queryBat();
-        //    bat_loop_time = current_time;
-        //}
-            
     }
     device.Disconnect();
     return 0;
