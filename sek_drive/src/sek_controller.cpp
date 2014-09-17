@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <cmath> 
+#include <sensor_msgs/LaserScan.h> //DELETE
 
 #define PI 3.14159265358979323846264338
 #define DIAMETER 0.1524 //m,6 INCHES
@@ -44,9 +45,11 @@ using namespace std;
 
 class sek_controller
 {
+    
+int SCAN_RECEIVED;//DELETE
+sensor_msgs::LaserScan gl_scan;//DELETE
     protected :
         ros::NodeHandle n_;
-        
         int ODOMETRY_MODE;
         int PUB_TF;
         int PUB_ODOM;
@@ -77,6 +80,8 @@ class sek_controller
         ros::Time prev_time, current_time, enc_loop_time;
         ros::Publisher odom_pub, encoder_pub, encoder_pub_ticks, pose_pub, pose_pub2;
         ros::Subscriber encoder_sub;
+        
+        ros::Subscriber hok_in;//DELETE
         tf::TransformBroadcaster *odom_broadcaster;
         //geometry_msgs::Quaternion q_imu;
         
@@ -345,8 +350,13 @@ class sek_controller
                     else
                     {
                     }
+                    device.SetCommand(_GO, 1,- 0);
+                    device.SetCommand(_GO, 2,- 0);
                     ROS_INFO("SHUTTING DOWN");
+                    device.Disconnect();
+
                     ros::shutdown();
+                                            
                 }
                 if((msg->buttons[9]==1)&&(msg->buttons[8]==0))//START
                 {
@@ -666,7 +676,7 @@ class sek_controller
         }
         int spin()
         {   
-            int status = device.Connect("/dev/ttyACM1");
+            int status = device.Connect("/dev/ttyACM0");
             if(status != RQ_SUCCESS)
             {
                 cout<<"Error connecting to device: "<<status<<"."<<endl;
@@ -704,6 +714,10 @@ class sek_controller
             pose_pub2 = n_.advertise<geometry_msgs::PoseStamped>("/poseStamped",5);
     
             ros::Subscriber sub = n_.subscribe("/joy", 1, &sek_controller::teleopCallback, this);
+            
+            
+            hok_in = n_.subscribe<sensor_msgs::LaserScan>("/scan", 100, &sek_controller::scanCallback, this);//DELETE
+            
             ros::Subscriber align_sub = n_.subscribe("/motor_commands", 1, &sek_controller::alignCallback, this);
             ros::Subscriber cmd_vel_sub = n_.subscribe("/cmd_vel", 100, &sek_controller::cmdVelCallback, this);
     
@@ -756,6 +770,22 @@ class sek_controller
             */
             printf ("Sek Operational\n\n");
             ros::Duration(0.01).sleep(); //sleep for 10 ms
+            
+            
+            
+            
+            
+            
+        //SKATA    
+    SCAN_RECEIVED = 0;
+    
+	float min_angle = gl_scan.angle_min;//save the minimum angle in degrees
+	float max_angle = gl_scan.angle_max;//save the maximum angle in degrees
+            //SKATA
+            
+            
+            
+            
             while (ros::ok())
             {
                 ros::spinOnce();
@@ -766,20 +796,85 @@ class sek_controller
                     calcOdom();
                     //pub2.publish(motor_commands);
                     enc_loop_time = current_time;
+                    
+                    
+                    
+                    //BULLSHIT STARTS HERE  
+                //ROS_INFO("Looping");
+                if ((SCAN_RECEIVED == 1))
+                {   
+                    float r = gl_scan.ranges[0];
+                    int i = 0;
+                    while(r != r){
+                    r = gl_scan.ranges[++i];
+                }
+                int j = gl_scan.ranges.size() -1;
+                float l = gl_scan.ranges[j];
+                while(l != l){
+                    l = gl_scan.ranges[--j];
+                }
+                ROS_ERROR("LEFT = %f , RIGHT = %f",l,r);
+                if(l < r){
+                    ROS_INFO("TURN RIGHT");
+                    int minRIGHT = -200;
+                    int minLEFT = 200;
+                    device.SetCommand(_GO,1, minRIGHT);
+                    device.SetCommand(_GO,2, minLEFT+(l*100));
+                }
+                else if(l > r){
+                    ROS_WARN("TURN LEFT");
+                    int minRIGHT = -200;
+                    int minLEFT = 200;
+                    device.SetCommand(_GO,1, minRIGHT-(r*100));
+                    device.SetCommand(_GO,2, minLEFT);
+                }
+                SCAN_RECEIVED = 0;
+         } 
+           //BULLSHIT ENDS HERE         
+                    
+                    
+                    
+                    
+                    
                 }
             }
             device.Disconnect();
             return 0;
         }
 ~sek_controller(){}    
+
+
+
+//DELETE scanCallback
+void scanCallback(const sensor_msgs::LaserScan::ConstPtr& str_scan)
+{
+    //ROS_INFO("SCAN CALLBACK");
+    if (SCAN_RECEIVED == 0)
+    {
+        
+        gl_scan.angle_min = str_scan->angle_min;
+        //ROS_INFO("FLOAT : %f",str_scan->angle_min);
+        //ROS_INFO("FLOAT_2 :%f",scan.angle_min);
+        gl_scan.angle_max = str_scan->angle_max;
+        gl_scan.range_max = str_scan->range_max;
+        gl_scan.range_min = str_scan->range_min;
+        gl_scan.angle_increment = str_scan->angle_increment;
+        gl_scan.ranges.clear();
+        gl_scan.ranges = str_scan->ranges;
+        SCAN_RECEIVED = 1;
+        
+    }
+}
 };
 
 int main(int argc, char **argv)
 {
+   
     ros::init(argc, argv, "sek_drive");
     ros::NodeHandle nh;
     sek_controller* sk = 0;
     sk = new sek_controller(nh);
+    
     sk->spin();
     return 0;
 }
