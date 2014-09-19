@@ -48,6 +48,7 @@ class sek_controller
     
 int SCAN_RECEIVED;//DELETE
 sensor_msgs::LaserScan gl_scan;//DELETE
+bool bullshit; //DELETE
     protected :
         ros::NodeHandle n_;
         int ODOMETRY_MODE;
@@ -74,7 +75,6 @@ sensor_msgs::LaserScan gl_scan;//DELETE
         double xx, yy, tt;
         
         bool firstOdom;
-        
         RoboteqDevice device;
         
         ros::Time prev_time, current_time, enc_loop_time;
@@ -86,9 +86,9 @@ sensor_msgs::LaserScan gl_scan;//DELETE
         //geometry_msgs::Quaternion q_imu;
         
     public:
-        sek_controller (ros::NodeHandle& n): n_(n), ODOMETRY_MODE(1), PUB_TF(1), PUB_ODOM(1), CAMERA_ON(0), max_vel_x(0), min_vel_x(0.04),
-            max_rotational_vel(0), acc_lim_th(0), acc_lim_x(0), acc_lim_y(0), MAX_SPEED_LIMIT(0), RC_MAX_SPEED_LIMIT(0), encoder_ppr(450), encoder_cpr(0), LM(0), RM(0),
-            lenc(0), renc(0), lenc_prev(0), renc_prev(0), lenc_init(0), renc_init(0), enc_errors(0), lenc2(0), renc2(0)
+        sek_controller (ros::NodeHandle& n): n_(n), ODOMETRY_MODE(1), PUB_TF(1), PUB_ODOM(1), CAMERA_ON(0), max_vel_x(0.6), min_vel_x(0.04),
+            max_rotational_vel(2.3771), acc_lim_th(0), acc_lim_x(0), acc_lim_y(0), MAX_SPEED_LIMIT(1), RC_MAX_SPEED_LIMIT(0), encoder_ppr(450), encoder_cpr(0), LM(0), RM(0),
+            lenc(0), renc(0), lenc_prev(0), renc_prev(0), lenc_init(0), renc_init(0), enc_errors(0), lenc2(0), renc2(0), bullshit(false)/*DELETE*/
             {}
             
         double wrapToPi(double angle)
@@ -131,12 +131,25 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                     
             va = (-1 * (1 - ((msg->angular.z - ((-max_rotational_vel))) / (max_rotational_vel - ( - max_rotational_vel))))  +
                 ((msg->angular.z - ((-max_rotational_vel))) / (max_rotational_vel - ( - max_rotational_vel))))*(MAX_SPEED)*(MAX_SPEED_LIMIT);
+             
+            vx = ((MAX_SPEED + MAX_SPEED) * (msg->linear.x + max_vel_x)) / (2*max_vel_x) - MAX_SPEED;    
+            va = ((MAX_SPEED + MAX_SPEED) * (msg->angular.z + max_rotational_vel)) / (2*max_rotational_vel)- MAX_SPEED;
                     
             ROS_INFO("VX : %f", vx);
             ROS_INFO("VA : %f", va);
-            LM = (vx - va*(WHEEL_BASE_WIDTH/2));
-            RM = -(vx + va*(WHEEL_BASE_WIDTH/2));
-            
+            LM = (vx - va);//*(WHEEL_BASE_WIDTH/2));
+            RM = -(vx + va);//*(WHEEL_BASE_WIDTH/2));
+            /*
+            LM = (msg->linear.x - msg->angular.z*WHEEL_BASE_WIDTH/2);
+            RM = (msg->linear.x + msg->angular.z*WHEEL_BASE_WIDTH/2);
+            ROS_WARN("RM : %d", RM);
+            ROS_WARN("LM : %d", LM);
+            double v_max = 0.6;
+            double v_min = 0;
+            double motor_min = 0;
+            double motor_max = 500;
+            LM = ((motor_max - motor_min) * (LM - v_min)) / (v_max - v_min);
+            RM = ((motor_max - motor_min) * (RM - v_min)) / (v_max - v_min);*/
             ROS_INFO("RM : %d", RM);
             ROS_INFO("LM : %d", LM);
             if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS) //right motor
@@ -161,7 +174,8 @@ sensor_msgs::LaserScan gl_scan;//DELETE
             
             double L_V = msg->axes[3]*1000;
             double A_V = msg->axes[4]*1000;
-            //ROS_INFO("L_V : %f        A_V : %f",L_V, A_V);
+            
+            ROS_INFO("L_V : %f        A_V : %f",L_V, A_V);
             if((L_V != 0) || (A_V != 0))
             {
                 if(L_V == 0)//akinito oxhma
@@ -249,6 +263,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                  * CHANGES MUST BE ALSO MADE IN THE AMCL CONFIG FILES
                  * FOR THE NAVIGATION PACKAGE
                 */
+                /*
                 if(abs(LM) > (MAX_SPEED*RC_MAX_SPEED_LIMIT))
                 {
 					//ROS_INFO("HERE");
@@ -259,6 +274,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
 					//ROS_INFO("HERE-2");
                     RM = (RM/abs(RM)) * MAX_SPEED * RC_MAX_SPEED_LIMIT;
                 }
+                */
                 if((status = device.SetCommand(_GO,1, RM)) != RQ_SUCCESS)
                 {
                     cout<<"motor command M1 failed --> "<<status<<endl;
@@ -266,7 +282,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                 }
                 else
                 {
-                    //cout<<"MOTOR 1 SPEED  "<<RM<<endl;
+                    cout<<"MOTOR 1 SPEED  "<<RM<<endl;
                 }
                 if((status = device.SetCommand(_GO,2, LM)) !=RQ_SUCCESS)
                 {
@@ -275,7 +291,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                 }
                 else
                 {
-                    //cout<<"MOTOR 2 SPEED : "<<LM<<endl;
+                    cout<<"MOTOR 2 SPEED : "<<LM<<endl;
                 }
             }
             else 
@@ -305,7 +321,14 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                 }
                 if(msg->buttons[3]==1)//SQUARE BUTTON
                 {
-                    ROS_INFO("SAVING MAP as \"mymap\"");
+                    //ROS_INFO("SAVING MAP as \"mymap\"");
+                    bullshit = !bullshit;//DELETE
+                    if(bullshit){
+                        ROS_INFO("TRUE");
+                    }
+                    else{
+                        ROS_WARN("FALSE");
+                    }
                     //system("rosrun map_server map_saver -f mymap &");
                 }
                 if(msg->buttons[2]==1)//Χ ΒUTTON
@@ -654,7 +677,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
             }
             
 
-            
+            /*
             if (PUB_TF == 1)
             {
             //Add TF broadcaster
@@ -667,7 +690,7 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                 odom_trans.transform.translation.z = 0.0;
                 odom_trans.transform.rotation = quat;
                 odom_broadcaster->sendTransform(odom_trans);
-            }
+            }*/
         }
         
         void calculateVel()
@@ -799,39 +822,57 @@ sensor_msgs::LaserScan gl_scan;//DELETE
                     
                     
                     
-                    //BULLSHIT STARTS HERE  
+                //BULLSHIT STARTS HERE  
                 //ROS_INFO("Looping");
-                if ((SCAN_RECEIVED == 1))
-                {   
-                    float r = gl_scan.ranges[0];
-                    int i = 0;
-                    while(r != r){
-                    r = gl_scan.ranges[++i];
-                }
-                int j = gl_scan.ranges.size() -1;
-                float l = gl_scan.ranges[j];
-                while(l != l){
-                    l = gl_scan.ranges[--j];
-                }
-                ROS_ERROR("LEFT = %f , RIGHT = %f",l,r);
-                if(l < r){
-                    ROS_INFO("TURN RIGHT");
-                    int minRIGHT = -200;
-                    int minLEFT = 200;
-                    device.SetCommand(_GO,1, minRIGHT);
-                    device.SetCommand(_GO,2, minLEFT+(l*100));
-                }
-                else if(l > r){
-                    ROS_WARN("TURN LEFT");
-                    int minRIGHT = -200;
-                    int minLEFT = 200;
-                    device.SetCommand(_GO,1, minRIGHT-(r*100));
-                    device.SetCommand(_GO,2, minLEFT);
-                }
-                SCAN_RECEIVED = 0;
-         } 
-           //BULLSHIT ENDS HERE         
-                    
+                
+                if(bullshit){
+                    int mul = 1;
+                    if ((SCAN_RECEIVED == 1))
+                    {   
+                        float straight = gl_scan.ranges[24];
+                        if(straight == straight){
+                            mul += straight; 
+                        }
+                        if(mul > 2.5){
+                            mul = 2.5;
+                        }
+                        if(straight != straight){
+                            mul = 3;
+                        }
+                        float r = gl_scan.ranges[0];
+                        int i = 0;
+                        while(r != r){
+                            r = gl_scan.ranges[++i];
+                        }
+                        int j = gl_scan.ranges.size() - 1;
+                        float l = gl_scan.ranges[j];
+                        while(l != l){
+                            l = gl_scan.ranges[--j];
+                        }
+                        //ROS_ERROR("LEFT = %f , RIGHT = %f",l,r);
+                        if(l < r){
+                            //ROS_INFO("TURN RIGHT");
+                            int minRIGHT = -100;
+                            int minLEFT = 100;
+                            device.SetCommand(_GO, 1, minRIGHT*mul/2);
+                            device.SetCommand(_GO, 2, (minLEFT+(l*100))*mul);
+                            //device.SetCommand(_GO, 1, (minRIGHT+(l*100))*mul);
+                            //device.SetCommand(_GO, 2, minLEFT*mul);
+                        }
+                        else if(l > r){
+                            //ROS_WARN("TURN LEFT");
+                            int minRIGHT = -100;
+                            int minLEFT = 100;
+                            device.SetCommand(_GO, 1, (minRIGHT-(r*100))*mul);
+                            device.SetCommand(_GO, 2, minLEFT*mul/2);
+                            //device.SetCommand(_GO, 1, minRIGHT*mul);
+                            //device.SetCommand(_GO, 2, (minLEFT-(r*100))*mul);
+                        }
+                        SCAN_RECEIVED = 0;
+                    }
+                } 
+                //BULLSHIT ENDS HERE         
+                 
                     
                     
                     
